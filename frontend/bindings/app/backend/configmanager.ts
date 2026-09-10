@@ -21,6 +21,21 @@ export function AddGoogleAccount(oauthToken: string): $CancellablePromise<string
     return $Call.ByID(733209449, oauthToken);
 }
 
+/**
+ * StartInAppGoogleLogin opens an in-app WebView window for Google login,
+ * automatically extracts oauth_token from cookies, and completes account connection.
+ */
+export function StartInAppGoogleLogin(): $CancellablePromise<string> {
+    return $Call.ByName("app/backend.ConfigManager.StartInAppGoogleLogin");
+}
+
+/**
+ * CancelInAppGoogleLogin closes the active in-app Google login window if open.
+ */
+export function CancelInAppGoogleLogin(): $CancellablePromise<void> {
+    return $Call.ByName("app/backend.ConfigManager.CancelInAppGoogleLogin");
+}
+
 export function AddTokenBindingAliasFromADB(email: string): $CancellablePromise<void> {
     return $Call.ByID(3252041498, email);
 }

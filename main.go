@@ -51,6 +51,7 @@ func runGUI() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	configManager.SetApp(wailsApp)
 
 	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:               title,
