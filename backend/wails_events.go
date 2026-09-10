@@ -18,4 +18,6 @@ func init() {
 	application.RegisterEvent[int64]("uploadTotalBytesDelta")
 	application.RegisterEvent[FilesDroppedEvent]("files-dropped")
 	application.RegisterEvent[StartUploadEvent]("startUpload")
+	application.RegisterEvent[AutoSyncStatus]("autosync:status")
+	application.RegisterEvent[AutoSyncFileEvent]("autosync:file-uploaded")
 }

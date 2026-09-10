@@ -106,7 +106,17 @@ func runGUI() {
 		}
 	})
 
-	err := wailsApp.Run()
+	autoSyncNotifier := backend.NewWailsAutoSyncNotifier(wailsApp)
+	autoSyncManager, err := backend.NewAutoSyncManager(configManager, autoSyncNotifier, wailsApp.Logger)
+	if err == nil {
+		backend.SetActiveAutoSyncManager(autoSyncManager)
+		autoSyncManager.Start()
+		defer autoSyncManager.Stop()
+	} else {
+		wailsApp.Logger.Error("failed to initialize AutoSyncManager", "error", err)
+	}
+
+	err = wailsApp.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -7,6 +7,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as application$0 from "../../github.com/wailsapp/wails/v3/pkg/application/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 export function AddCredentials(newAuthString: string): $CancellablePromise<void> {
@@ -21,23 +25,19 @@ export function AddGoogleAccount(oauthToken: string): $CancellablePromise<string
     return $Call.ByID(733209449, oauthToken);
 }
 
-/**
- * StartInAppGoogleLogin opens an in-app WebView window for Google login,
- * automatically extracts oauth_token from cookies, and completes account connection.
- */
-export function StartInAppGoogleLogin(): $CancellablePromise<string> {
-    return $Call.ByName("app/backend.ConfigManager.StartInAppGoogleLogin");
-}
-
-/**
- * CancelInAppGoogleLogin closes the active in-app Google login window if open.
- */
-export function CancelInAppGoogleLogin(): $CancellablePromise<void> {
-    return $Call.ByName("app/backend.ConfigManager.CancelInAppGoogleLogin");
+export function AddSyncFolder(folder: string): $CancellablePromise<void> {
+    return $Call.ByID(708177970, folder);
 }
 
 export function AddTokenBindingAliasFromADB(email: string): $CancellablePromise<void> {
     return $Call.ByID(3252041498, email);
+}
+
+/**
+ * CancelInAppGoogleLogin closes the active in-app Google login window if one is open.
+ */
+export function CancelInAppGoogleLogin(): $CancellablePromise<void> {
+    return $Call.ByID(317231242);
 }
 
 export function CredentialNeedsTokenBinding(authString: string): $CancellablePromise<boolean> {
@@ -58,18 +58,47 @@ export function GetAlbumName(): $CancellablePromise<string> {
     return $Call.ByID(3590690922);
 }
 
-export function GetExcludePattern(): $CancellablePromise<string> {
-    return $Call.ByID(2942848526);
-}
-
-export function GetSettings(): $CancellablePromise<$models.Preferences> {
-    return $Call.ByID(4262641511).then(($result: any) => {
+export function GetAutoSyncStatus(): $CancellablePromise<$models.AutoSyncStatus> {
+    return $Call.ByID(4136090252).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
+export function GetExcludePattern(): $CancellablePromise<string> {
+    return $Call.ByID(2942848526);
+}
+
+export function GetPresetFolders(): $CancellablePromise<$models.PresetFolders> {
+    return $Call.ByID(3658713694).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function GetSettings(): $CancellablePromise<$models.Preferences> {
+    return $Call.ByID(4262641511).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+export function GetSyncFolders(): $CancellablePromise<string[]> {
+    return $Call.ByID(4187658046).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
+/**
+ * OpenDirectoryDialog opens the OS native directory picker dialog and returns the selected folder.
+ */
+export function OpenDirectoryDialog(): $CancellablePromise<string> {
+    return $Call.ByID(2438934449);
+}
+
 export function RemoveCredentials(email: string): $CancellablePromise<void> {
     return $Call.ByID(4243930372, email);
+}
+
+export function RemoveSyncFolder(folder: string): $CancellablePromise<void> {
+    return $Call.ByID(621066969, folder);
 }
 
 export function SetAlbumAutoMode(autoMode: boolean): $CancellablePromise<void> {
@@ -78,6 +107,17 @@ export function SetAlbumAutoMode(autoMode: boolean): $CancellablePromise<void> {
 
 export function SetAlbumName(albumName: string): $CancellablePromise<void> {
     return $Call.ByID(841849854, albumName);
+}
+
+/**
+ * SetApp saves the Wails application reference for window management.
+ */
+export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
+    return $Call.ByID(471517813, app);
+}
+
+export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(203272859, enabled);
 }
 
 export function SetDeleteFromHost(deleteFromHost: boolean): $CancellablePromise<void> {
@@ -124,6 +164,10 @@ export function SetSkipIncompleteLivePhotos(skipIncompleteLivePhotos: boolean): 
     return $Call.ByID(2521603022, skipIncompleteLivePhotos);
 }
 
+export function SetSyncOnStartup(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3766804153, v);
+}
+
 export function SetUpdateExistingPhotosToLive(updateExistingPhotosToLive: boolean): $CancellablePromise<void> {
     return $Call.ByID(3038371812, updateExistingPhotosToLive);
 }
@@ -136,6 +180,22 @@ export function SetUseQuota(useQuota: boolean): $CancellablePromise<void> {
     return $Call.ByID(778544527, useQuota);
 }
 
+/**
+ * StartInAppGoogleLogin opens a dedicated in-app WebView window for Google EmbeddedSetup,
+ * polls for the oauth_token cookie, automatically closes the window upon successful login,
+ * and saves the new Google Photos account.
+ */
+export function StartInAppGoogleLogin(): $CancellablePromise<string> {
+    return $Call.ByID(910831596);
+}
+
+export function TriggerSyncNow(): $CancellablePromise<void> {
+    return $Call.ByID(3134080591);
+}
+
 // Private type creation functions
 const $$createType0 = $models.AccountsState.createFrom;
-const $$createType1 = $models.Preferences.createFrom;
+const $$createType1 = $models.AutoSyncStatus.createFrom;
+const $$createType2 = $models.PresetFolders.createFrom;
+const $$createType3 = $models.Preferences.createFrom;
+const $$createType4 = $Create.Array($Create.Any);

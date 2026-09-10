@@ -10,11 +10,12 @@ import {
 import { useColorMode } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { UserPlus } from '@lucide/vue'
-import { ConfigManager } from '../bindings/app/backend'
+import { ConfigManager, type AutoSyncStatus } from '../bindings/app/backend'
 import { Events } from '@wailsio/runtime'
 import Button from "./components/ui/button/Button.vue"
 import GoogleAccountSelect from './components/GoogleAccountSelect.vue'
 import GoogleAuthSetup from "./components/GoogleAuthSetup.vue"
+import AutoSyncModal from './components/AutoSyncModal.vue'
 import './index.css'
 import SettingsPanel from "./SettingsPanel.vue"
 import Upload from './Upload.vue'
@@ -44,6 +45,18 @@ const tokenBindingEmail = ref('')
 const isExtractingTokenBinding = ref(false)
 const isAccountSetupOpen = ref(false)
 const removingAccount = ref('')
+const isAutoSyncOpen = ref(false)
+const autoSyncStatus = ref<AutoSyncStatus>({
+  enabled: false,
+  isSyncing: false,
+  folderCount: 0,
+  watchedFolders: [],
+  queueCount: 0,
+  syncedCount: 0,
+  lastSyncTime: 0,
+  currentFile: '',
+  statusMessage: 'Idle',
+})
 
 watch(selectedOption, async (newValue) => {
   if (newValue) {
@@ -135,7 +148,20 @@ function openAccountSetup() {
 
 onMounted(async () => {
   await refreshCredentials()
+  try {
+    const autoStatus = await ConfigManager.GetAutoSyncStatus()
+    if (autoStatus) {
+      autoSyncStatus.value = autoStatus
+    }
+  } catch {
+    // ignore
+  }
 
+  Events.On('autosync:status', (event: { data: AutoSyncStatus }) => {
+    if (event?.data) {
+      autoSyncStatus.value = event.data
+    }
+  })
 })
 
 const handleCopyClick = () => {
@@ -444,21 +470,37 @@ onUnmounted(() => {
             </Button>
           </div>
 
-          <Sheet>
-            <SheetTrigger>
-              <Button
-                variant="outline"
-                class="cursor-pointer select-none"
-              >
-                Settings
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom">
-              <TooltipProvider disable-hoverable-content>
-                <SettingsPanel />
-              </TooltipProvider>
-            </SheetContent>
-          </Sheet>
+          <div class="flex gap-2.5">
+            <Button
+              variant="outline"
+              class="cursor-pointer select-none gap-2"
+              @click="isAutoSyncOpen = true"
+            >
+              <span
+                class="size-2 rounded-full"
+                :class="[
+                  !autoSyncStatus.enabled ? 'bg-zinc-500' : autoSyncStatus.isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                ]"
+              />
+              <span>Auto-Sync</span>
+            </Button>
+
+            <Sheet>
+              <SheetTrigger>
+                <Button
+                  variant="outline"
+                  class="cursor-pointer select-none"
+                >
+                  Settings
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom">
+                <TooltipProvider disable-hoverable-content>
+                  <SettingsPanel @open-auto-sync="isAutoSyncOpen = true" />
+                </TooltipProvider>
+              </SheetContent>
+            </Sheet>
+          </div>
 
           <div
             v-if="uploadState.uploadedFiles > 0 || uploadState.results.fail.length > 0"
@@ -491,6 +533,9 @@ onUnmounted(() => {
     <GoogleAuthSetup
       v-model:open="isAccountSetupOpen"
       @account-added="refreshCredentials"
+    />
+    <AutoSyncModal
+      v-model:open="isAutoSyncOpen"
     />
     <Toaster
       position="bottom-center"

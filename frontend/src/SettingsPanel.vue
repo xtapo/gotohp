@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted, watch } from 'vue'
 import { ConfigManager } from '../bindings/app/backend'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -10,6 +11,10 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Info } from '@lucide/vue'
+
+defineEmits<{
+    (e: 'open-auto-sync'): void
+}>()
 
 import {
     NumberField,
@@ -364,6 +369,25 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
         type="text"
         placeholder="Proxy URL (optional)"
       />
+    </div>
+    <div class="flex items-center justify-between pt-2 border-t">
+      <div class="flex flex-col">
+        <Label
+          class="cursor-pointer"
+          @click="$emit('open-auto-sync')"
+        >
+          Folder Auto-Sync
+        </Label>
+        <span class="text-xs text-muted-foreground">Monitor folders & silent background upload</span>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        class="h-7 text-xs cursor-pointer"
+        @click="$emit('open-auto-sync')"
+      >
+        Manage Folders
+      </Button>
     </div>
   </div>
 </template>

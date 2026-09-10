@@ -131,6 +131,95 @@ export class AlbumStatus {
     }
 }
 
+/**
+ * AutoSyncFileEvent is emitted when a file has been successfully uploaded via Auto-Sync.
+ */
+export class AutoSyncFileEvent {
+    "path": string;
+    "fileName": string;
+    "size": number;
+
+    /** Creates a new AutoSyncFileEvent instance. */
+    constructor($$source: Partial<AutoSyncFileEvent> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("size" in $$source)) {
+            this["size"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutoSyncFileEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutoSyncFileEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AutoSyncFileEvent($$parsedSource as Partial<AutoSyncFileEvent>);
+    }
+}
+
+export class AutoSyncStatus {
+    "enabled": boolean;
+    "isSyncing": boolean;
+    "folderCount": number;
+    "watchedFolders": string[];
+    "queueCount": number;
+    "syncedCount": number;
+    "lastSyncTime": number;
+    "currentFile": string;
+    "statusMessage": string;
+
+    /** Creates a new AutoSyncStatus instance. */
+    constructor($$source: Partial<AutoSyncStatus> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("isSyncing" in $$source)) {
+            this["isSyncing"] = false;
+        }
+        if (!("folderCount" in $$source)) {
+            this["folderCount"] = 0;
+        }
+        if (!("watchedFolders" in $$source)) {
+            this["watchedFolders"] = [];
+        }
+        if (!("queueCount" in $$source)) {
+            this["queueCount"] = 0;
+        }
+        if (!("syncedCount" in $$source)) {
+            this["syncedCount"] = 0;
+        }
+        if (!("lastSyncTime" in $$source)) {
+            this["lastSyncTime"] = 0;
+        }
+        if (!("currentFile" in $$source)) {
+            this["currentFile"] = "";
+        }
+        if (!("statusMessage" in $$source)) {
+            this["statusMessage"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutoSyncStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutoSyncStatus {
+        const $$createField3_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("watchedFolders" in $$parsedSource) {
+            $$parsedSource["watchedFolders"] = $$createField3_0($$parsedSource["watchedFolders"]);
+        }
+        return new AutoSyncStatus($$parsedSource as Partial<AutoSyncStatus>);
+    }
+}
+
 export class FileUploadResult {
     "MediaKey": string;
     "IsError": boolean;
@@ -238,6 +327,9 @@ export class Preferences {
     "disableUnsupportedFilesFilter": boolean;
     "setDateFromFilename": boolean;
     "excludePattern": string;
+    "autoSyncEnabled": boolean;
+    "syncFolders": string[];
+    "syncOnStartup": boolean;
 
     /**
      * AlbumName and AlbumAutoMode are per-session choices and are never persisted.
@@ -286,6 +378,15 @@ export class Preferences {
         if (!("excludePattern" in $$source)) {
             this["excludePattern"] = "";
         }
+        if (!("autoSyncEnabled" in $$source)) {
+            this["autoSyncEnabled"] = false;
+        }
+        if (!("syncFolders" in $$source)) {
+            this["syncFolders"] = [];
+        }
+        if (!("syncOnStartup" in $$source)) {
+            this["syncOnStartup"] = false;
+        }
         if (!("albumName" in $$source)) {
             this["albumName"] = "";
         }
@@ -300,7 +401,11 @@ export class Preferences {
      * Creates a new Preferences instance from a string or object.
      */
     static createFrom($$source: any = {}): Preferences {
+        const $$createField14_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("syncFolders" in $$parsedSource) {
+            $$parsedSource["syncFolders"] = $$createField14_0($$parsedSource["syncFolders"]);
+        }
         return new Preferences($$parsedSource as Partial<Preferences>);
     }
 }
@@ -335,6 +440,31 @@ export class PreflightWarning {
             $$parsedSource["Paths"] = $$createField0_0($$parsedSource["Paths"]);
         }
         return new PreflightWarning($$parsedSource as Partial<PreflightWarning>);
+    }
+}
+
+export class PresetFolders {
+    "pictures": string;
+    "downloads": string;
+
+    /** Creates a new PresetFolders instance. */
+    constructor($$source: Partial<PresetFolders> = {}) {
+        if (!("pictures" in $$source)) {
+            this["pictures"] = "";
+        }
+        if (!("downloads" in $$source)) {
+            this["downloads"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PresetFolders instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PresetFolders {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PresetFolders($$parsedSource as Partial<PresetFolders>);
     }
 }
 

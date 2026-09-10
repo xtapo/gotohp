@@ -17,10 +17,12 @@ function configure() {
         "albumComplete": $$createType2,
         "albumError": $$createType3,
         "albumProgress": $$createType2,
-        "files-dropped": $$createType4,
-        "startUpload": $$createType5,
-        "uploadStart": $$createType6,
-        "uploadWarning": $$createType7,
+        "autosync:file-uploaded": $$createType4,
+        "autosync:status": $$createType5,
+        "files-dropped": $$createType6,
+        "startUpload": $$createType7,
+        "uploadStart": $$createType8,
+        "uploadWarning": $$createType9,
     }));
 }
 
@@ -29,9 +31,11 @@ const $$createType0 = backend$0.FileUploadResult.createFrom;
 const $$createType1 = backend$0.ThreadStatus.createFrom;
 const $$createType2 = backend$0.AlbumStatus.createFrom;
 const $$createType3 = backend$0.AlbumError.createFrom;
-const $$createType4 = backend$0.FilesDroppedEvent.createFrom;
-const $$createType5 = backend$0.StartUploadEvent.createFrom;
-const $$createType6 = backend$0.UploadBatchStart.createFrom;
-const $$createType7 = backend$0.PreflightWarning.createFrom;
+const $$createType4 = backend$0.AutoSyncFileEvent.createFrom;
+const $$createType5 = backend$0.AutoSyncStatus.createFrom;
+const $$createType6 = backend$0.FilesDroppedEvent.createFrom;
+const $$createType7 = backend$0.StartUploadEvent.createFrom;
+const $$createType8 = backend$0.UploadBatchStart.createFrom;
+const $$createType9 = backend$0.PreflightWarning.createFrom;
 
 configure();

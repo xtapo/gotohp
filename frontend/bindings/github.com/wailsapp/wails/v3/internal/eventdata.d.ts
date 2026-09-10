@@ -17,6 +17,8 @@ declare module "@wailsio/runtime" {
             "albumComplete": backend$0.AlbumStatus;
             "albumError": backend$0.AlbumError;
             "albumProgress": backend$0.AlbumStatus;
+            "autosync:file-uploaded": backend$0.AutoSyncFileEvent;
+            "autosync:status": backend$0.AutoSyncStatus;
             "files-dropped": backend$0.FilesDroppedEvent;
             "startUpload": backend$0.StartUploadEvent;
             "uploadCancel": void;

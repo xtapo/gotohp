@@ -29,19 +29,22 @@ type AccountConfig struct {
 // Preferences are GUI settings. The CLI never reads them; every CLI run is
 // configured by flags alone.
 type Preferences struct {
-	Proxy                         string `json:"proxy" koanf:"proxy"`
-	UseQuota                      bool   `json:"useQuota" koanf:"use_quota"`
-	Saver                         bool   `json:"saver" koanf:"saver"`
-	Recursive                     bool   `json:"recursive" koanf:"recursive"`
-	ForceUpload                   bool   `json:"forceUpload" koanf:"force_upload"`
-	PairLivePhotos                bool   `json:"pairLivePhotos" koanf:"pair_live_photos"`
-	SkipIncompleteLivePhotos      bool   `json:"skipIncompleteLivePhotos" koanf:"skip_incomplete_live_photos"`
-	UpdateExistingPhotosToLive    bool   `json:"updateExistingPhotosToLive" koanf:"update_existing_photos_to_live"`
-	UploadThreads                 int    `json:"uploadThreads" koanf:"upload_threads"`
-	DeleteFromHost                bool   `json:"deleteFromHost" koanf:"delete_from_host"`
-	DisableUnsupportedFilesFilter bool   `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
-	SetDateFromFilename           bool   `json:"setDateFromFilename" koanf:"set_date_from_filename"`
-	ExcludePattern                string `json:"excludePattern" koanf:"exclude_pattern"`
+	Proxy                         string   `json:"proxy" koanf:"proxy"`
+	UseQuota                      bool     `json:"useQuota" koanf:"use_quota"`
+	Saver                         bool     `json:"saver" koanf:"saver"`
+	Recursive                     bool     `json:"recursive" koanf:"recursive"`
+	ForceUpload                   bool     `json:"forceUpload" koanf:"force_upload"`
+	PairLivePhotos                bool     `json:"pairLivePhotos" koanf:"pair_live_photos"`
+	SkipIncompleteLivePhotos      bool     `json:"skipIncompleteLivePhotos" koanf:"skip_incomplete_live_photos"`
+	UpdateExistingPhotosToLive    bool     `json:"updateExistingPhotosToLive" koanf:"update_existing_photos_to_live"`
+	UploadThreads                 int      `json:"uploadThreads" koanf:"upload_threads"`
+	DeleteFromHost                bool     `json:"deleteFromHost" koanf:"delete_from_host"`
+	DisableUnsupportedFilesFilter bool     `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
+	SetDateFromFilename           bool     `json:"setDateFromFilename" koanf:"set_date_from_filename"`
+	ExcludePattern                string   `json:"excludePattern" koanf:"exclude_pattern"`
+	AutoSyncEnabled               bool     `json:"autoSyncEnabled" koanf:"auto_sync_enabled"`
+	SyncFolders                   []string `json:"syncFolders" koanf:"sync_folders"`
+	SyncOnStartup                 bool     `json:"syncOnStartup" koanf:"sync_on_startup"`
 	// AlbumName and AlbumAutoMode are per-session choices and are never persisted.
 	AlbumName     string `json:"albumName" koanf:"-"`
 	AlbumAutoMode bool   `json:"albumAutoMode" koanf:"-"`
@@ -70,9 +73,16 @@ type legacyConfig struct {
 	DisableUnsupportedFilesFilter bool     `koanf:"disable_unsupported_files_filter"`
 	SetDateFromFilename           bool     `koanf:"set_date_from_filename"`
 	ExcludePattern                string   `koanf:"exclude_pattern"`
+	AutoSyncEnabled               bool     `koanf:"auto_sync_enabled"`
+	SyncFolders                   []string `koanf:"sync_folders"`
+	SyncOnStartup                 bool     `koanf:"sync_on_startup"`
 }
 
 func (l legacyConfig) toConfig() Config {
+	var folders []string
+	if len(l.SyncFolders) > 0 {
+		folders = l.SyncFolders
+	}
 	return Config{
 		Account: AccountConfig{Credentials: l.Credentials, Selected: l.Selected},
 		Preferences: Preferences{
@@ -89,6 +99,9 @@ func (l legacyConfig) toConfig() Config {
 			DisableUnsupportedFilesFilter: l.DisableUnsupportedFilesFilter,
 			SetDateFromFilename:           l.SetDateFromFilename,
 			ExcludePattern:                l.ExcludePattern,
+			AutoSyncEnabled:               l.AutoSyncEnabled,
+			SyncFolders:                   folders,
+			SyncOnStartup:                 l.SyncOnStartup,
 		},
 	}
 }
@@ -251,6 +264,158 @@ func (g *ConfigManager) GetExcludePattern() string {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return AppConfig.Preferences.ExcludePattern
+}
+
+type PresetFolders struct {
+	Pictures  string `json:"pictures"`
+	Downloads string `json:"downloads"`
+}
+
+type AutoSyncStatus struct {
+	Enabled        bool     `json:"enabled"`
+	IsSyncing      bool     `json:"isSyncing"`
+	FolderCount    int      `json:"folderCount"`
+	WatchedFolders []string `json:"watchedFolders"`
+	QueueCount     int      `json:"queueCount"`
+	SyncedCount    int      `json:"syncedCount"`
+	LastSyncTime   int64    `json:"lastSyncTime"`
+	CurrentFile    string   `json:"currentFile"`
+	StatusMessage  string   `json:"statusMessage"`
+}
+
+type AutoSyncController interface {
+	SetEnabled(enabled bool)
+	WatchFolder(folder string) error
+	UnwatchFolder(folder string) error
+	TriggerSyncNow() error
+	GetStatus() AutoSyncStatus
+}
+
+var (
+	activeAutoSyncMu  sync.RWMutex
+	activeAutoSyncMgr AutoSyncController
+)
+
+// SetActiveAutoSyncManager registers the global AutoSyncController.
+func SetActiveAutoSyncManager(mgr AutoSyncController) {
+	activeAutoSyncMu.Lock()
+	defer activeAutoSyncMu.Unlock()
+	activeAutoSyncMgr = mgr
+}
+
+func getActiveAutoSyncManager() AutoSyncController {
+	activeAutoSyncMu.RLock()
+	defer activeAutoSyncMu.RUnlock()
+	return activeAutoSyncMgr
+}
+
+func (g *ConfigManager) SetAutoSyncEnabled(enabled bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.AutoSyncEnabled = enabled
+	})
+	if mgr := getActiveAutoSyncManager(); mgr != nil {
+		mgr.SetEnabled(enabled)
+	}
+}
+
+func (g *ConfigManager) AddSyncFolder(folder string) error {
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return errors.New("folder path cannot be empty")
+	}
+	cleanFolder := filepath.Clean(folder)
+	info, err := os.Stat(cleanFolder)
+	if err != nil {
+		return fmt.Errorf("cannot access folder: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", cleanFolder)
+	}
+
+	var added bool
+	updateAppConfig(func(config *Config) {
+		for _, f := range config.Preferences.SyncFolders {
+			if filepath.Clean(f) == cleanFolder {
+				return
+			}
+		}
+		config.Preferences.SyncFolders = append(config.Preferences.SyncFolders, cleanFolder)
+		added = true
+	})
+	if added {
+		if mgr := getActiveAutoSyncManager(); mgr != nil {
+			_ = mgr.WatchFolder(cleanFolder)
+		}
+	}
+	return nil
+}
+
+func (g *ConfigManager) RemoveSyncFolder(folder string) error {
+	cleanFolder := filepath.Clean(strings.TrimSpace(folder))
+	updateAppConfig(func(config *Config) {
+		var updated []string
+		for _, f := range config.Preferences.SyncFolders {
+			if filepath.Clean(f) != cleanFolder {
+				updated = append(updated, f)
+			}
+		}
+		config.Preferences.SyncFolders = updated
+	})
+	if mgr := getActiveAutoSyncManager(); mgr != nil {
+		_ = mgr.UnwatchFolder(cleanFolder)
+	}
+	return nil
+}
+
+func (g *ConfigManager) SetSyncOnStartup(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.SyncOnStartup = v
+	})
+}
+
+func (g *ConfigManager) GetSyncFolders() []string {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	if AppConfig.Preferences.SyncFolders == nil {
+		return []string{}
+	}
+	return AppConfig.Preferences.SyncFolders
+}
+
+func (g *ConfigManager) GetPresetFolders() PresetFolders {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return PresetFolders{}
+	}
+	return PresetFolders{
+		Pictures:  filepath.Join(home, "Pictures"),
+		Downloads: filepath.Join(home, "Downloads"),
+	}
+}
+
+func (g *ConfigManager) TriggerSyncNow() error {
+	mgr := getActiveAutoSyncManager()
+	if mgr == nil {
+		return errors.New("auto sync manager is not initialized")
+	}
+	return mgr.TriggerSyncNow()
+}
+
+func (g *ConfigManager) GetAutoSyncStatus() AutoSyncStatus {
+	mgr := getActiveAutoSyncManager()
+	if mgr == nil {
+		configMu.RLock()
+		enabled := AppConfig.Preferences.AutoSyncEnabled
+		folders := AppConfig.Preferences.SyncFolders
+		configMu.RUnlock()
+		return AutoSyncStatus{
+			Enabled:        enabled,
+			FolderCount:    len(folders),
+			WatchedFolders: folders,
+			StatusMessage:  "Idle",
+		}
+	}
+	return mgr.GetStatus()
 }
 
 func (g *ConfigManager) AddCredentials(newAuthString string) error {
@@ -807,6 +972,10 @@ func loadAppConfig() Config {
 
 	if c.Preferences.UploadThreads < 1 {
 		c.Preferences.UploadThreads = DefaultPreferences.UploadThreads
+	}
+
+	if len(c.Preferences.SyncFolders) == 0 {
+		c.Preferences.SyncFolders = nil
 	}
 
 	return c

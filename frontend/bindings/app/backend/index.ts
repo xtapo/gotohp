@@ -11,10 +11,13 @@ export {
     AccountsState,
     AlbumError,
     AlbumStatus,
+    AutoSyncFileEvent,
+    AutoSyncStatus,
     FileUploadResult,
     FilesDroppedEvent,
     Preferences,
     PreflightWarning,
+    PresetFolders,
     StartUploadEvent,
     ThreadStatus,
     UploadBatchStart
