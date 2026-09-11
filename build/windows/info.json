@@ -1,13 +1,21 @@
 {
 	"fixed": {
-		"file_version": "0.10.0"
+		"file_version": "1.2.0"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.10.0",
-			"CompanyName": "xob0t",
+			"ProductVersion": "1.2.0",
+			"CompanyName": "nhanhq",
 			"FileDescription": "Google Photos Unofficial Client",
-			"LegalCopyright": "© now, My Company",
+			"LegalCopyright": "© 2026 nhanhq",
+			"ProductName": "gotohp",
+			"Comments": "This is a comment"
+		},
+		"040904B0": {
+			"ProductVersion": "1.2.0",
+			"CompanyName": "nhanhq",
+			"FileDescription": "Google Photos Unofficial Client",
+			"LegalCopyright": "© 2026 nhanhq",
 			"ProductName": "gotohp",
 			"Comments": "This is a comment"
 		}

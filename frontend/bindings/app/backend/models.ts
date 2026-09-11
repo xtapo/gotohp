@@ -381,6 +381,7 @@ export class Preferences {
     "syncFolders": string[];
     "folderAlbums": { [_ in string]?: string };
     "syncOnStartup": boolean;
+    "startWithWindows": boolean;
 
     /**
      * AlbumName and AlbumAutoMode are per-session choices and are never persisted.
@@ -446,6 +447,9 @@ export class Preferences {
         }
         if (!("syncOnStartup" in $$source)) {
             this["syncOnStartup"] = false;
+        }
+        if (!("startWithWindows" in $$source)) {
+            this["startWithWindows"] = false;
         }
         if (!("albumName" in $$source)) {
             this["albumName"] = "";

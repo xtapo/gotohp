@@ -8,16 +8,16 @@
     !define INFO_PROJECTNAME "gotohp"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "xob0t"
+    !define INFO_COMPANYNAME "nhanhq"
 !endif
 !ifndef INFO_PRODUCTNAME
     !define INFO_PRODUCTNAME "gotohp"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.10.0"
+    !define INFO_PRODUCTVERSION "1.2.0"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "© now, My Company"
+    !define INFO_COPYRIGHT "© 2026 nhanhq"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

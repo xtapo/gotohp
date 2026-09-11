@@ -36,10 +36,14 @@ func main() {
 
 func runGUI() {
 	normalizeFrontendDevServerURL()
+	backend.SyncAutostart()
 
+	startHidden := hasHiddenFlag(os.Args[1:])
 	configManager := &backend.ConfigManager{}
+	var window *application.WebviewWindow
+
 	wailsApp := application.New(application.Options{
-		Name:        "com.xob0t.gotohp",
+		Name:        "com.nhanhq.gotohp",
 		Description: "Google Photos unofficial client",
 		Services: []application.Service{
 			application.NewService(configManager),
@@ -50,10 +54,23 @@ func runGUI() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.nhanhq.gotohp",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				if hasHiddenFlag(data.Args) {
+					return
+				}
+				if window != nil {
+					window.Show()
+					window.Restore()
+					window.Focus()
+				}
+			},
+		},
 	})
 	configManager.SetApp(wailsApp)
 
-	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+	window = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:               title,
 		Frameless:           false,
 		Width:               400,
@@ -62,6 +79,7 @@ func runGUI() {
 		DisableResize:       true,
 		MaximiseButtonState: application.ButtonDisabled,
 		BackgroundType:      application.BackgroundTypeTranslucent,
+		Hidden:              startHidden,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 0,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -155,4 +173,13 @@ func normalizeFrontendDevServerURL() {
 	if value != os.Getenv(envName) {
 		_ = os.Setenv(envName, value)
 	}
+}
+
+func hasHiddenFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--hidden" || arg == "-hidden" || arg == "--systray" || arg == "-systray" || arg == "--minimized" {
+			return true
+		}
+	}
+	return false
 }

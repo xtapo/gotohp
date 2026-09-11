@@ -42,6 +42,7 @@ interface Settings {
     setDateFromFilename: boolean
     uploadThreads: number
     maxUploadSpeedMBps: number
+    startWithWindows: boolean
 }
 
 type BooleanSetting = Exclude<keyof Settings, 'proxy' | 'uploadThreads' | 'maxUploadSpeedMBps'>
@@ -59,7 +60,8 @@ const settings = ref<Settings>({
     disableUnsupportedFilesFilter: false,
     setDateFromFilename: false,
     uploadThreads: 0,
-    maxUploadSpeedMBps: 0
+    maxUploadSpeedMBps: 0,
+    startWithWindows: false
 })
 const isHydrating = ref(true)
 
@@ -84,7 +86,8 @@ onMounted(async () => {
             disableUnsupportedFilesFilter: config.disableUnsupportedFilesFilter || false,
             setDateFromFilename: config.setDateFromFilename || false,
             uploadThreads: config.uploadThreads || 1,
-            maxUploadSpeedMBps: config.maxUploadSpeedMBps || 0
+            maxUploadSpeedMBps: config.maxUploadSpeedMBps || 0,
+            startWithWindows: config.startWithWindows || false
         }
     } finally {
         await nextTick()
@@ -166,6 +169,11 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
     } else {
         await ConfigManager.SetUploadThreads(newValue)
     }
+})
+
+watch(() => settings.value.startWithWindows, async (newValue) => {
+    if (isHydrating.value) return
+    await ConfigManager.SetStartWithWindows(newValue)
 })
 </script>
 
@@ -418,6 +426,38 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
         v-model="settings.proxy"
         type="text"
         placeholder="Proxy URL (optional)"
+      />
+    </div>
+    <div class="flex items-center justify-between">
+      <div
+        class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-4"
+        @click.self="toggleSetting('startWithWindows')"
+      >
+        <div class="flex flex-col">
+          <Label
+            for="start-with-windows"
+            class="cursor-pointer font-medium"
+          >Start with Windows</Label>
+          <span class="text-xs text-muted-foreground">Launch hidden in system tray on startup</span>
+        </div>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="inline-flex size-5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              aria-label="About Start with Windows"
+            >
+              <Info class="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent class="max-w-72">
+            Tự động khởi động cùng Windows và chạy ẩn dưới khay hệ thống (system tray).
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      <Switch
+        id="start-with-windows"
+        v-model="settings.startWithWindows"
       />
     </div>
     <div class="flex items-center justify-between pt-2 border-t">

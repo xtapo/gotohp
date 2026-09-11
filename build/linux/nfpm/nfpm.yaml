@@ -6,12 +6,12 @@
 name: "gotohp"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.10.0"
+version: "1.2.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Google Photos Unofficial Client"
-vendor: "xob0t"
+vendor: "nhanhq"
 homepage: "https://wails.io"
 license: "MIT"
 release: "1"

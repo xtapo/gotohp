@@ -1,13 +1,13 @@
 name: "gotohp-cli"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.10.0"
+version: "1.2.0"
 section: "utils"
 priority: "optional"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Google Photos unofficial client CLI"
-vendor: "xob0t"
-homepage: "https://github.com/xob0t/gotohp"
+vendor: "nhanhq"
+homepage: "https://wails.io"
 license: "MIT"
 release: "1"
 

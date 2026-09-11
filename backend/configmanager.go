@@ -48,6 +48,7 @@ type Preferences struct {
 	SyncFolders                   []string          `json:"syncFolders" koanf:"sync_folders"`
 	FolderAlbums                  map[string]string `json:"folderAlbums" koanf:"folder_albums"`
 	SyncOnStartup                 bool              `json:"syncOnStartup" koanf:"sync_on_startup"`
+	StartWithWindows              bool              `json:"startWithWindows" koanf:"start_with_windows"`
 	// AlbumName and AlbumAutoMode are per-session choices and are never persisted.
 	AlbumName     string `json:"albumName" koanf:"-"`
 	AlbumAutoMode bool   `json:"albumAutoMode" koanf:"-"`
@@ -82,6 +83,7 @@ type legacyConfig struct {
 	SyncFolders                   []string          `koanf:"sync_folders"`
 	FolderAlbums                  map[string]string `koanf:"folder_albums"`
 	SyncOnStartup                 bool              `koanf:"sync_on_startup"`
+	StartWithWindows              bool              `koanf:"start_with_windows"`
 }
 
 func (l legacyConfig) toConfig() Config {
@@ -115,6 +117,7 @@ func (l legacyConfig) toConfig() Config {
 			SyncFolders:                   folders,
 			FolderAlbums:                  albums,
 			SyncOnStartup:                 l.SyncOnStartup,
+			StartWithWindows:              l.StartWithWindows,
 		},
 	}
 }
@@ -416,6 +419,13 @@ func (g *ConfigManager) SetSyncOnStartup(v bool) {
 	updateAppConfig(func(config *Config) {
 		config.Preferences.SyncOnStartup = v
 	})
+}
+
+func (g *ConfigManager) SetStartWithWindows(v bool) error {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.StartWithWindows = v
+	})
+	return SetAutostart(v)
 }
 
 func (g *ConfigManager) GetSyncFolders() []string {

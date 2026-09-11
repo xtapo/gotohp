@@ -246,6 +246,10 @@ export function SetSkipIncompleteLivePhotos(skipIncompleteLivePhotos: boolean): 
     return $Call.ByID(2521603022, skipIncompleteLivePhotos);
 }
 
+export function SetStartWithWindows(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(369174671, v);
+}
+
 export function SetSyncOnStartup(v: boolean): $CancellablePromise<void> {
     return $Call.ByID(3766804153, v);
 }
