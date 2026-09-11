@@ -1,22 +1,70 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Button from "./components/ui/button/Button.vue"
 import { Progress } from "./components/ui/progress"
 import { ScrollArea } from "./components/ui/scroll-area"
 import ThreadProgress from "./components/ThreadProgress.vue"
 import { uploadManager } from './utils/UploadManager'
-import { X, Clock, Zap, FolderPlus, AlertTriangle } from '@lucide/vue'
+import { ConfigManager } from '../bindings/app/backend'
+import { X, Clock, Zap, FolderPlus, AlertTriangle, Pause, Play, Gauge } from '@lucide/vue'
 
 const { state } = uploadManager
 
-// Elapsed time ticker
+// Elapsed time ticker & pause tracking
 const elapsedSeconds = ref(0)
+const pausedDuration = ref(0)
+let pauseStartTime = 0
 let elapsedInterval: ReturnType<typeof setInterval> | null = null
 
-onMounted(() => {
+// Bandwidth limit state
+const selectedLimitMBps = ref(0)
+
+const currentLimitLabel = computed(() => {
+  if (selectedLimitMBps.value <= 0) return 'Unlimited'
+  return `${selectedLimitMBps.value} MB/s`
+})
+
+function onLimitSliderChange() {
+  uploadManager.setBandwidthLimit(selectedLimitMBps.value)
+}
+
+function applyPresetLimit(preset: number) {
+  selectedLimitMBps.value = preset
+  uploadManager.setBandwidthLimit(preset)
+}
+
+function togglePause() {
+  if (state.isPaused) {
+    uploadManager.resumeUpload()
+  } else {
+    uploadManager.pauseUpload()
+  }
+}
+
+watch(() => state.isPaused, (isPaused) => {
+  if (isPaused) {
+    pauseStartTime = Date.now()
+  } else if (pauseStartTime > 0) {
+    pausedDuration.value += (Date.now() - pauseStartTime)
+    pauseStartTime = 0
+  }
+})
+
+onMounted(async () => {
+  try {
+    const cfg = await ConfigManager.GetSettings()
+    if (cfg && cfg.maxUploadSpeedMBps !== undefined) {
+      selectedLimitMBps.value = cfg.maxUploadSpeedMBps
+      uploadManager.setBandwidthLimit(cfg.maxUploadSpeedMBps)
+    }
+  } catch {
+    // ignore
+  }
+
   elapsedInterval = setInterval(() => {
-    if (state.startTime > 0) {
-      elapsedSeconds.value = Math.floor((Date.now() - state.startTime) / 1000)
+    if (state.startTime > 0 && !state.isPaused) {
+      const activeElapsed = Math.floor((Date.now() - state.startTime - pausedDuration.value) / 1000)
+      elapsedSeconds.value = Math.max(0, activeElapsed)
     }
   }, 1000)
 })
@@ -49,6 +97,7 @@ function formatBytes(bytes: number, decimals = 1): string {
 
 // Format speed
 const speedDisplay = computed(() => {
+  if (state.isPaused) return 'Paused'
   if (state.uploadSpeed <= 0) return '--'
   return formatBytes(state.uploadSpeed) + '/s'
 })
@@ -86,10 +135,18 @@ function warningFiles(paths: string[]): string {
   <div class="flex flex-col h-full w-full px-4 pt-6 pb-4">
     <!-- Header with file count -->
     <div class="text-center mb-3">
-      <p class="text-2xl font-bold tabular-nums">
-        {{ state.uploadedFiles }}<span class="text-muted-foreground font-normal">/</span><span class="text-muted-foreground">{{ state.totalFiles }}</span>
-      </p>
-      <p class="text-xs text-muted-foreground">
+      <div class="flex items-center justify-center gap-2">
+        <p class="text-2xl font-bold tabular-nums">
+          {{ state.uploadedFiles }}<span class="text-muted-foreground font-normal">/</span><span class="text-muted-foreground">{{ state.totalFiles }}</span>
+        </p>
+        <span
+          v-if="state.isPaused"
+          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-500 border border-amber-500/30 animate-pulse"
+        >
+          Paused
+        </span>
+      </div>
+      <p class="text-xs text-muted-foreground mt-0.5">
         items processed
       </p>
     </div>
@@ -97,8 +154,16 @@ function warningFiles(paths: string[]): string {
     <!-- Stats row -->
     <div class="flex gap-3 justify-center mb-3 text-xs text-muted-foreground">
       <div class="flex items-center gap-1.5">
-        <Zap :size="12" />
-        <span class="tabular-nums text-foreground">{{ speedDisplay }}</span>
+        <Zap
+          :size="12"
+          :class="state.isPaused ? 'text-amber-500' : 'text-primary'"
+        />
+        <span
+          class="tabular-nums font-medium"
+          :class="state.isPaused ? 'text-amber-500' : 'text-foreground'"
+        >
+          {{ speedDisplay }}
+        </span>
       </div>
       <span class="text-border">|</span>
       <div class="flex items-center gap-1.5">
@@ -108,7 +173,7 @@ function warningFiles(paths: string[]): string {
     </div>
 
     <!-- Main progress bar -->
-    <div class="mb-4">
+    <div class="mb-3">
       <Progress
         :model-value="progressPercent"
         class="h-2.5"
@@ -186,18 +251,74 @@ function warningFiles(paths: string[]): string {
       </ScrollArea>
     </div>
 
-    <!-- Cancel button - fixed at bottom -->
-    <Button
-      variant="destructive"
-      size="sm"
-      class="w-full"
-      @click="() => uploadManager.cancelUpload()"
-    >
-      <X
-        :size="14"
-        class="mr-1"
-      />
-      Cancel Upload
-    </Button>
+    <!-- Bandwidth limit controller -->
+    <div class="mb-3 p-2.5 rounded-lg border bg-muted/20 text-xs select-none">
+      <div class="flex items-center justify-between mb-1.5">
+        <div class="flex items-center gap-1.5 font-medium text-foreground">
+          <Gauge
+            :size="13"
+            class="text-primary"
+          />
+          <span>Bandwidth Limit</span>
+        </div>
+        <span class="font-semibold tabular-nums text-primary">
+          {{ currentLimitLabel }}
+        </span>
+      </div>
+      <div class="flex items-center gap-2 mb-1.5">
+        <input
+          type="range"
+          min="0"
+          max="50"
+          step="1"
+          v-model.number="selectedLimitMBps"
+          class="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+          @input="onLimitSliderChange"
+        >
+      </div>
+      <div class="flex justify-between gap-1 text-[10px] text-muted-foreground">
+        <button
+          v-for="preset in [0, 2, 5, 10, 20]"
+          :key="preset"
+          type="button"
+          class="px-1.5 py-0.5 rounded border text-[10px] transition-colors cursor-pointer"
+          :class="selectedLimitMBps === preset ? 'bg-primary text-primary-foreground border-primary font-medium' : 'bg-background hover:bg-muted'"
+          @click="applyPresetLimit(preset)"
+        >
+          {{ preset === 0 ? 'Unlimited' : `${preset} MB/s` }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Action buttons: Pause/Resume + Cancel -->
+    <div class="flex gap-2">
+      <Button
+        :variant="state.isPaused ? 'default' : 'outline'"
+        size="sm"
+        class="flex-1 cursor-pointer select-none transition-colors"
+        :class="state.isPaused ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''"
+        @click="togglePause"
+      >
+        <component
+          :is="state.isPaused ? Play : Pause"
+          :size="14"
+          class="mr-1.5"
+        />
+        {{ state.isPaused ? 'Resume' : 'Pause' }}
+      </Button>
+
+      <Button
+        variant="destructive"
+        size="sm"
+        class="flex-1 cursor-pointer select-none"
+        @click="() => uploadManager.cancelUpload()"
+      >
+        <X
+          :size="14"
+          class="mr-1.5"
+        />
+        Cancel Upload
+      </Button>
+    </div>
   </div>
 </template>

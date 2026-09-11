@@ -323,12 +323,15 @@ export class Preferences {
     "skipIncompleteLivePhotos": boolean;
     "updateExistingPhotosToLive": boolean;
     "uploadThreads": number;
+    "maxUploadSpeedMBps": number;
     "deleteFromHost": boolean;
     "disableUnsupportedFilesFilter": boolean;
     "setDateFromFilename": boolean;
     "excludePattern": string;
     "autoSyncEnabled": boolean;
+    "autoAlbumEnabled": boolean;
     "syncFolders": string[];
+    "folderAlbums": { [_ in string]?: string };
     "syncOnStartup": boolean;
 
     /**
@@ -366,6 +369,9 @@ export class Preferences {
         if (!("uploadThreads" in $$source)) {
             this["uploadThreads"] = 0;
         }
+        if (!("maxUploadSpeedMBps" in $$source)) {
+            this["maxUploadSpeedMBps"] = 0;
+        }
         if (!("deleteFromHost" in $$source)) {
             this["deleteFromHost"] = false;
         }
@@ -381,8 +387,14 @@ export class Preferences {
         if (!("autoSyncEnabled" in $$source)) {
             this["autoSyncEnabled"] = false;
         }
+        if (!("autoAlbumEnabled" in $$source)) {
+            this["autoAlbumEnabled"] = false;
+        }
         if (!("syncFolders" in $$source)) {
             this["syncFolders"] = [];
+        }
+        if (!("folderAlbums" in $$source)) {
+            this["folderAlbums"] = {};
         }
         if (!("syncOnStartup" in $$source)) {
             this["syncOnStartup"] = false;

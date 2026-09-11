@@ -33,13 +33,17 @@ type NopAutoSyncNotifier struct{}
 func (NopAutoSyncNotifier) EmitStatus(AutoSyncStatus)          {}
 func (NopAutoSyncNotifier) EmitFileUploaded(AutoSyncFileEvent) {}
 
+type fileStat struct {
+	size    int64
+	modTime int64
+}
+
 // AutoSyncManager coordinates filesystem monitoring, file stability checking,
-// deduplication, and silent background uploads to Google Photos.
+// deduplication via Google Photos hash API, and silent background uploads.
 type AutoSyncManager struct {
 	configMgr *ConfigManager
 	notifier  AutoSyncNotifier
 	logger    *slog.Logger
-	db        *AutoSyncDB
 
 	watcher   *fsnotify.Watcher
 	mu        sync.RWMutex
@@ -65,13 +69,20 @@ type AutoSyncManager struct {
 	activeFiles     map[string]bool // file path -> true
 	activeFileNames map[int]string  // workerID -> baseName
 
+	// In-memory session cache to avoid repeatedly hashing unchanged files
+	sessionMu     sync.RWMutex
+	sessionSynced map[string]fileStat // canonical path -> {size, modTime}
+
+	// Folder-album synchronization mutex
+	albumMu sync.Mutex
+
 	// Status & statistics
 	syncedCount  int
 	lastSyncTime int64
 	currentFile  string
 }
 
-// NewAutoSyncManager creates a new AutoSyncManager instance.
+// NewAutoSyncManager creates a new AutoSyncManager instance without requiring a local database.
 func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, logger *slog.Logger) (*AutoSyncManager, error) {
 	if configMgr == nil {
 		configMgr = &ConfigManager{}
@@ -83,31 +94,15 @@ func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, log
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	ensureConfigLoaded()
-	configDir := filepath.Dir(ConfigPath)
-	if configDir == "" || configDir == "." {
-		configDir = filepath.Join(getUserConfigDir(), "gotohp")
-	}
-	dbPath := filepath.Join(configDir, "autosync.db")
-
-	db, err := NewAutoSyncDB(dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize autosync db at %s: %w", dbPath, err)
-	}
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		_ = db.Close()
 		return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
 	}
-
-	initialSynced, _ := db.GetSyncedCount()
 
 	mgr := &AutoSyncManager{
 		configMgr:       configMgr,
 		notifier:        notifier,
 		logger:          logger,
-		db:              db,
 		watcher:         watcher,
 		stopCh:          make(chan struct{}),
 		watchedDirs:     make(map[string]bool),
@@ -115,10 +110,28 @@ func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, log
 		queueNotify:     make(chan struct{}, 1),
 		activeFiles:     make(map[string]bool),
 		activeFileNames: make(map[int]string),
-		syncedCount:     initialSynced,
+		sessionSynced:   make(map[string]fileStat),
 	}
 
 	return mgr, nil
+}
+
+func (m *AutoSyncManager) isSessionSynced(path string, size, modTime int64) bool {
+	canonical := canonicalUploadPath(path)
+	m.sessionMu.RLock()
+	defer m.sessionMu.RUnlock()
+	stat, ok := m.sessionSynced[canonical]
+	if !ok {
+		return false
+	}
+	return stat.size == size && stat.modTime == modTime
+}
+
+func (m *AutoSyncManager) markSessionSynced(path string, size, modTime int64) {
+	canonical := canonicalUploadPath(path)
+	m.sessionMu.Lock()
+	defer m.sessionMu.Unlock()
+	m.sessionSynced[canonical] = fileStat{size: size, modTime: modTime}
 }
 
 // Start activates the file watcher and worker routines according to configuration.
@@ -167,7 +180,6 @@ func (m *AutoSyncManager) Stop() {
 
 	_ = m.watcher.Close()
 	m.wg.Wait()
-	_ = m.db.Close()
 }
 
 // SetEnabled enables or disables auto-sync monitoring.
@@ -394,8 +406,7 @@ func (m *AutoSyncManager) processPendingFiles() {
 			continue
 		}
 
-		synced, err := m.db.IsFileSynced(path, info.Size(), info.ModTime().Unix())
-		if err == nil && synced {
+		if m.isSessionSynced(path, info.Size(), info.ModTime().Unix()) {
 			continue
 		}
 
@@ -461,7 +472,7 @@ func (m *AutoSyncManager) processQueue() {
 		opts := m.configMgr.SessionUploadOptions()
 		opts = opts.normalized()
 
-		// Filter out files that are already actively uploading or already synced in DB
+		// Filter out files that are already actively uploading or already synced in this session
 		var freshPaths []string
 		m.activeMu.Lock()
 		for _, p := range paths {
@@ -469,7 +480,7 @@ func (m *AutoSyncManager) processQueue() {
 				continue
 			}
 			if info, err := os.Stat(p); err == nil {
-				if synced, _ := m.db.IsFileSynced(p, info.Size(), info.ModTime().Unix()); synced {
+				if m.isSessionSynced(p, info.Size(), info.ModTime().Unix()) {
 					continue
 				}
 			}
@@ -578,9 +589,9 @@ func (m *AutoSyncManager) uploadSingleWorkItem(item UploadWorkItem, api *Api, op
 		m.updateCurrentFileStatus()
 	}()
 
-	// Double check if already synced in DB
+	// Double check if already synced in session
 	if info, err := os.Stat(primaryPath); err == nil {
-		if synced, _ := m.db.IsFileSynced(primaryPath, info.Size(), info.ModTime().Unix()); synced {
+		if m.isSessionSynced(primaryPath, info.Size(), info.ModTime().Unix()) {
 			return
 		}
 	}
@@ -594,15 +605,10 @@ func (m *AutoSyncManager) uploadSingleWorkItem(item UploadWorkItem, api *Api, op
 		return
 	}
 
-	// Calculate SHA1 and record in DB for all paths in this work item
+	// Mark all paths in this work item as session synced
 	for _, p := range allPaths {
 		if fi, err := os.Stat(p); err == nil {
-			sha1Bytes, err := CalculateSHA1(context.Background(), p)
-			sha1Hex := ""
-			if err == nil {
-				sha1Hex = fmt.Sprintf("%x", sha1Bytes)
-			}
-			_ = m.db.RecordSyncedFile(p, fi.Size(), fi.ModTime().Unix(), sha1Hex)
+			m.markSessionSynced(p, fi.Size(), fi.ModTime().Unix())
 		}
 	}
 
@@ -611,7 +617,12 @@ func (m *AutoSyncManager) uploadSingleWorkItem(item UploadWorkItem, api *Api, op
 	m.lastSyncTime = time.Now().Unix()
 	m.mu.Unlock()
 
-	m.logger.Info("AutoSync: uploaded successfully", "path", primaryPath, "workerID", workerID, "mediaKey", mediaKey, "skipped", skipped)
+	m.logger.Info("AutoSync: processed item", "path", primaryPath, "workerID", workerID, "mediaKey", mediaKey, "skipped", skipped)
+
+	// Add to folder album if auto-album is enabled
+	if mediaKey != "" {
+		m.assignMediaToFolderAlbum(api, primaryPath, mediaKey)
+	}
 
 	if !skipped {
 		var fileSize int64
@@ -623,6 +634,47 @@ func (m *AutoSyncManager) uploadSingleWorkItem(item UploadWorkItem, api *Api, op
 			FileName: baseName,
 			Size:     fileSize,
 		})
+	}
+}
+
+func (m *AutoSyncManager) assignMediaToFolderAlbum(api *Api, primaryPath, mediaKey string) {
+	if mediaKey == "" {
+		return
+	}
+	cfg := m.configMgr.GetSettings()
+	if !cfg.AutoAlbumEnabled {
+		return
+	}
+
+	parentDir := filepath.Dir(primaryPath)
+	albumTitle := filepath.Base(parentDir)
+	if albumTitle == "" || albumTitle == "." || albumTitle == string(filepath.Separator) {
+		return
+	}
+
+	m.albumMu.Lock()
+	defer m.albumMu.Unlock()
+
+	albumKey := m.configMgr.GetFolderAlbumKey(parentDir)
+	albumTarget := albumKey
+	if albumTarget == "" {
+		albumTarget = albumTitle
+	}
+
+	albumMgr := NewAlbumManager(api, NopReporter{}, m.logger, m.stopCh)
+	albumKeys, err := albumMgr.AddToAlbum([]string{mediaKey}, albumTarget)
+	if err != nil && albumTarget != albumTitle {
+		// If adding to existing album failed (e.g. deleted remotely), fall back to creating a new album
+		albumKeys, err = albumMgr.AddToAlbum([]string{mediaKey}, albumTitle)
+	}
+
+	if err != nil {
+		m.logger.Warn("AutoSync: failed to add to album", "folder", parentDir, "album", albumTitle, "error", err)
+		return
+	}
+
+	if len(albumKeys) > 0 && albumKeys[0] != "" {
+		m.configMgr.SetFolderAlbumKey(parentDir, albumKeys[0])
 	}
 }
 
@@ -672,8 +724,7 @@ func (m *AutoSyncManager) TriggerSyncNow() error {
 		if err != nil {
 			continue
 		}
-		synced, err := m.db.IsFileSynced(file, info.Size(), info.ModTime().Unix())
-		if err == nil && synced {
+		if m.isSessionSynced(file, info.Size(), info.ModTime().Unix()) {
 			continue
 		}
 		m.enqueue(file)

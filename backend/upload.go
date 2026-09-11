@@ -25,13 +25,15 @@ type StartUploadEvent struct {
 }
 
 type UploadManager struct {
-	mu       sync.Mutex
-	wg       sync.WaitGroup
-	cancel   chan struct{}
-	canceled bool
-	running  bool
-	reporter UploadReporter
-	logger   *slog.Logger
+	mu                sync.Mutex
+	wg                sync.WaitGroup
+	cancel            chan struct{}
+	canceled          bool
+	running           bool
+	reporter          UploadReporter
+	logger            *slog.Logger
+	controller        *UploadController
+	initialLimitBytes int64
 	// apiOptions is captured from the options of the run in progress.
 	apiOptions ApiOptions
 }
@@ -57,9 +59,46 @@ func (m *UploadManager) IsRunning() bool {
 	return m.running
 }
 
+func (m *UploadManager) Pause() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.controller != nil {
+		m.controller.Pause()
+	}
+}
+
+func (m *UploadManager) Resume() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.controller != nil {
+		m.controller.Resume()
+	}
+}
+
+func (m *UploadManager) IsPaused() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.controller != nil {
+		return m.controller.IsPaused()
+	}
+	return false
+}
+
+func (m *UploadManager) SetBandwidthLimit(bytesPerSec int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.initialLimitBytes = bytesPerSec
+	if m.controller != nil {
+		m.controller.SetLimit(bytesPerSec)
+	}
+}
+
 func (m *UploadManager) Cancel() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.controller != nil {
+		m.controller.Resume() // unblock any paused readers so they can exit
+	}
 	if m.cancel != nil && !m.canceled {
 		close(m.cancel)
 		m.canceled = true
@@ -88,6 +127,12 @@ func (m *UploadManager) getCancelChan() <-chan struct{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.cancel
+}
+
+func (m *UploadManager) getController() *UploadController {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.controller
 }
 
 type UploadBatchStart struct {
@@ -132,6 +177,12 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	m.cancel = make(chan struct{})
 	m.canceled = false
 	m.apiOptions = opts.Api
+
+	limitBytes := m.initialLimitBytes
+	if limitBytes <= 0 && opts.MaxUploadSpeedMBps > 0 {
+		limitBytes = int64(opts.MaxUploadSpeedMBps) * 1024 * 1024
+	}
+	m.controller = NewUploadController(limitBytes)
 	m.mu.Unlock()
 
 	// Make preflight visible immediately so a long directory or metadata scan can
@@ -262,6 +313,7 @@ func (m *UploadManager) finish() {
 	m.reporter.UploadStop()
 	m.mu.Lock()
 	m.running = false
+	m.controller = nil
 	m.mu.Unlock()
 }
 
@@ -535,10 +587,11 @@ func UploadFile(ctx context.Context, api *Api, filePath string, opts UploadOptio
 	if reporter == nil {
 		reporter = NopReporter{}
 	}
-	return uploadSingleFile(ctx, api, filePath, opts, workerID, reporter)
+	key, _, err := uploadSingleFile(ctx, api, filePath, opts, workerID, reporter)
+	return key, err
 }
 
-func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts UploadOptions, workerID int, reporter UploadReporter) (string, error) {
+func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts UploadOptions, workerID int, reporter UploadReporter) (string, bool, error) {
 	fileName := filepath.Base(filePath)
 	mediakey := ""
 
@@ -565,7 +618,7 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 
 	sha1_hash_bytes, err := CalculateSHA1(ctx, filePath)
 	if err != nil {
-		return "", fmt.Errorf("error calculating hash file: %w", err)
+		return "", false, fmt.Errorf("error calculating hash file: %w", err)
 	}
 
 	sha1_hash_b64 := base64.StdEncoding.EncodeToString([]byte(sha1_hash_bytes))
@@ -601,16 +654,16 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 			})
 			if opts.DeleteFromHost {
 				if err := os.Remove(filePath); err != nil {
-					return mediakey, fmt.Errorf("file exists in library but failed to delete local copy: %w", err)
+					return mediakey, true, fmt.Errorf("file exists in library but failed to delete local copy: %w", err)
 				}
 			}
-			return mediakey, nil
+			return mediakey, true, nil
 		}
 	}
 
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		return "", fmt.Errorf("error getting file info: %w", err)
+		return "", false, fmt.Errorf("error getting file info: %w", err)
 	}
 
 	// Stage 3: Uploading
@@ -627,7 +680,7 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 
 	token, err := api.GetUploadToken(sha1_hash_b64, fileSize)
 	if err != nil {
-		return "", fmt.Errorf("error uploading file: %w", err)
+		return "", false, fmt.Errorf("error uploading file: %w", err)
 	}
 
 	// Create progress callback for upload
@@ -650,11 +703,11 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 
 	finalizeToken, err := api.UploadFileWithProgress(ctx, filePath, token, progressCallback)
 	if err != nil {
-		return "", fmt.Errorf("error uploading file: %w", err)
+		return "", false, fmt.Errorf("error uploading file: %w", err)
 	}
 	commitToken, err := finalizeToken.legacyCommitToken()
 	if err != nil {
-		return "", fmt.Errorf("error decoding upload finalize token: %w", err)
+		return "", false, fmt.Errorf("error decoding upload finalize token: %w", err)
 	}
 
 	// Stage 4: Finalizing
@@ -668,20 +721,20 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 
 	mediaKey, err := api.CommitUpload(commitToken, fileInfo.Name(), sha1_hash_bytes, uploadTimestamp)
 	if err != nil {
-		return "", fmt.Errorf("error committing file: %w", err)
+		return "", false, fmt.Errorf("error committing file: %w", err)
 	}
 
 	if len(mediaKey) == 0 {
-		return "", fmt.Errorf("media key not received")
+		return "", false, fmt.Errorf("media key not received")
 	}
 
 	if opts.DeleteFromHost {
 		if err := os.Remove(filePath); err != nil {
-			return mediaKey, fmt.Errorf("uploaded successfully but failed to delete file: %w", err)
+			return mediaKey, false, fmt.Errorf("uploaded successfully but failed to delete file: %w", err)
 		}
 	}
 
-	return mediaKey, nil
+	return mediaKey, false, nil
 }
 
 func (m *UploadManager) runWorker(workerID int, workChan <-chan UploadWorkItem, results chan<- FileUploadResult, opts UploadOptions) {
@@ -707,6 +760,13 @@ func (m *UploadManager) runWorker(workerID int, workChan <-chan UploadWorkItem, 
 	}
 
 	for item := range workChan {
+		ctrl := m.getController()
+		if ctrl != nil {
+			if err := ctrl.WaitIfPaused(context.Background()); err != nil {
+				return
+			}
+		}
+
 		select {
 		case <-cancel:
 			m.reporter.ThreadStatus(ThreadStatus{
@@ -717,6 +777,9 @@ func (m *UploadManager) runWorker(workerID int, workChan <-chan UploadWorkItem, 
 			return // Stop if cancellation is requested
 		default:
 			ctx, cancelUpload := context.WithCancel(context.Background())
+			if ctrl != nil {
+				ctx = WithUploadController(ctx, ctrl)
+			}
 			go func() {
 				select {
 				case <-cancel:
@@ -767,6 +830,7 @@ func (m *UploadManager) runWorker(workerID int, workChan <-chan UploadWorkItem, 
 					SkipReason:  skipReason,
 					Path:        path,
 					Paths:       paths,
+					MediaKey:    mediaKey,
 				}
 			} else {
 				results <- FileUploadResult{IsLivePhoto: isLivePhoto, Path: path, Paths: paths, MediaKey: mediaKey}
@@ -803,8 +867,7 @@ func uploadWorkItem(ctx context.Context, api *Api, item UploadWorkItem, opts Upl
 		if item.Single == nil || item.LivePhoto != nil {
 			return "", false, fmt.Errorf("invalid single-media work item")
 		}
-		mediaKey, err := uploadSingleFile(ctx, api, item.Single.Path, opts, workerID, reporter)
-		return mediaKey, false, err
+		return uploadSingleFile(ctx, api, item.Single.Path, opts, workerID, reporter)
 	case UploadWorkLivePhoto:
 		if item.LivePhoto == nil || item.Single != nil {
 			return "", false, fmt.Errorf("invalid Live Photo work item")

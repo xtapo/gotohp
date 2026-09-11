@@ -77,6 +77,27 @@ func runGUI() {
 		uploadManager.Cancel()
 	})
 
+	// Listen for upload pause event
+	wailsApp.Event.On("uploadPause", func(e *application.CustomEvent) {
+		uploadManager.Pause()
+		wailsApp.Event.Emit("uploadPaused", nil)
+	})
+
+	// Listen for upload resume event
+	wailsApp.Event.On("uploadResume", func(e *application.CustomEvent) {
+		uploadManager.Resume()
+		wailsApp.Event.Emit("uploadResumed", nil)
+	})
+
+	// Listen for bandwidth limit event (bytes/sec)
+	wailsApp.Event.On("uploadSetBandwidthLimit", func(e *application.CustomEvent) {
+		if limitBytes, ok := e.Data.(int64); ok {
+			uploadManager.SetBandwidthLimit(limitBytes)
+		} else if limitFloat, ok := e.Data.(float64); ok {
+			uploadManager.SetBandwidthLimit(int64(limitFloat))
+		}
+	})
+
 	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
 		paths := event.Context().DroppedFiles()
 		dropTarget := event.Context().DropTargetDetails()

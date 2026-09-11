@@ -401,6 +401,7 @@ func (a *Api) UploadFileWithProgress(ctx context.Context, filePath string, uploa
 	}
 	fileSize := fileInfo.Size()
 
+	controller := UploadControllerFromContext(ctx)
 	uploadURL := "https://photos.googleapis.com/data/upload/uploadmedia/interactive?upload_id=" + uploadToken
 	retryConfig := DefaultRetryConfig()
 
@@ -413,6 +414,12 @@ func (a *Api) UploadFileWithProgress(ctx context.Context, filePath string, uploa
 			return ScottyFinalizeToken{}, ctx.Err()
 		}
 
+		if controller != nil {
+			if err := controller.WaitIfPaused(ctx); err != nil {
+				return ScottyFinalizeToken{}, err
+			}
+		}
+
 		// Wait before retry (skip on first attempt)
 		if attempt > 0 {
 			delay := CalculateBackoff(attempt-1, retryConfig)
@@ -423,9 +430,26 @@ func (a *Api) UploadFileWithProgress(ctx context.Context, filePath string, uploa
 			}
 		}
 
-		// Signal start of this attempt (resets progress on retry)
+		// If retrying, check if server already received part or all of the file
+		var startOffset int64
+		if attempt > 0 {
+			offset, isComplete, token, err := a.queryUploadStatus(ctx, uploadURL, fileSize)
+			if err == nil {
+				if isComplete {
+					if onProgress != nil {
+						onProgress(fileSize, fileSize, attemptNum)
+					}
+					return token, nil
+				}
+				if offset > 0 && offset < fileSize {
+					startOffset = offset
+				}
+			}
+		}
+
+		// Signal start of this attempt (at startOffset)
 		if onProgress != nil {
-			onProgress(0, fileSize, attemptNum)
+			onProgress(startOffset, fileSize, attemptNum)
 		}
 
 		// Open file fresh for each attempt - this is the key to not loading into memory
@@ -434,15 +458,28 @@ func (a *Api) UploadFileWithProgress(ctx context.Context, filePath string, uploa
 			return ScottyFinalizeToken{}, fmt.Errorf("error opening file: %w", err)
 		}
 
+		if startOffset > 0 {
+			if _, err := file.Seek(startOffset, io.SeekStart); err != nil {
+				startOffset = 0
+				_, _ = file.Seek(0, io.SeekStart)
+			}
+		}
+
 		// Wrap file in progress reader if callback provided
 		var reader io.Reader = file
-		if onProgress != nil {
+		if controller != nil {
+			reader = NewThrottledReader(ctx, file, fileSize, controller, func(bytesRead, total int64) {
+				if onProgress != nil {
+					onProgress(startOffset+bytesRead, total, attemptNum)
+				}
+			})
+		} else if onProgress != nil {
 			reader = NewProgressReader(file, fileSize, func(bytesRead, total int64) {
-				onProgress(bytesRead, total, attemptNum)
+				onProgress(startOffset+bytesRead, total, attemptNum)
 			})
 		}
 
-		result, err := a.doUploadRequest(ctx, uploadURL, reader)
+		result, err := a.doUploadRequest(ctx, uploadURL, reader, startOffset, fileSize)
 		closeErr := file.Close() // Close file after request completes (success or fail)
 		if err == nil && closeErr != nil {
 			return ScottyFinalizeToken{}, fmt.Errorf("error closing file: %w", closeErr)
@@ -463,15 +500,73 @@ func (a *Api) UploadFileWithProgress(ctx context.Context, filePath string, uploa
 	return ScottyFinalizeToken{}, fmt.Errorf("upload failed after %d attempts: %w", retryConfig.MaxRetries+1, lastErr)
 }
 
+// queryUploadStatus queries Google Scotty to see how many bytes have been received so far.
+func (a *Api) queryUploadStatus(ctx context.Context, uploadURL string, fileSize int64) (offset int64, isComplete bool, token ScottyFinalizeToken, err error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, http.NoBody)
+	if err != nil {
+		return 0, false, ScottyFinalizeToken{}, err
+	}
+
+	bearerToken, err := a.BearerToken()
+	if err != nil {
+		return 0, false, ScottyFinalizeToken{}, err
+	}
+
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Accept-Language", a.language)
+	req.Header.Set("User-Agent", a.userAgent)
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	req.Header.Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+	req.Header.Set("Content-Length", "0")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return 0, false, ScottyFinalizeToken{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == 200 || resp.StatusCode == 201 {
+		bodyBytes, err := ReadResponseBody(resp)
+		if err != nil {
+			return 0, false, ScottyFinalizeToken{}, err
+		}
+		token, err := ParseScottyFinalizeToken(bodyBytes)
+		if err != nil {
+			return 0, false, ScottyFinalizeToken{}, err
+		}
+		return fileSize, true, token, nil
+	}
+
+	if resp.StatusCode == 308 { // Resume Incomplete
+		rangeHeader := resp.Header.Get("Range")
+		if rangeHeader != "" {
+			parts := strings.Split(rangeHeader, "-")
+			if len(parts) == 2 {
+				if lastByte, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64); err == nil {
+					return lastByte + 1, false, ScottyFinalizeToken{}, nil
+				}
+			}
+		}
+		return 0, false, ScottyFinalizeToken{}, nil
+	}
+
+	return 0, false, ScottyFinalizeToken{}, fmt.Errorf("status query returned status %d", resp.StatusCode)
+}
+
 // doUploadRequest performs a single upload attempt
-func (a *Api) doUploadRequest(ctx context.Context, uploadURL string, reader io.Reader) (ScottyFinalizeToken, error) {
+func (a *Api) doUploadRequest(ctx context.Context, uploadURL string, reader io.Reader, startOffset, fileSize int64) (ScottyFinalizeToken, error) {
 	req, err := http.NewRequestWithContext(ctx, "PUT", uploadURL, reader)
 	if err != nil {
 		return ScottyFinalizeToken{}, fmt.Errorf("error creating request: %w", err)
 	}
 
-	// Use chunked transfer encoding (don't set ContentLength)
-	req.ContentLength = -1
+	if startOffset > 0 {
+		req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", startOffset, fileSize-1, fileSize))
+		req.ContentLength = fileSize - startOffset
+	} else {
+		// Use chunked transfer encoding (don't set ContentLength)
+		req.ContentLength = -1
+	}
 
 	bearerToken, err := a.BearerToken()
 	if err != nil {

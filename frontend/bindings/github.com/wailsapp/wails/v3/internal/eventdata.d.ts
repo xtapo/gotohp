@@ -22,6 +22,11 @@ declare module "@wailsio/runtime" {
             "files-dropped": backend$0.FilesDroppedEvent;
             "startUpload": backend$0.StartUploadEvent;
             "uploadCancel": void;
+            "uploadPause": void;
+            "uploadResume": void;
+            "uploadPaused": void;
+            "uploadResumed": void;
+            "uploadSetBandwidthLimit": number;
             "uploadStart": backend$0.UploadBatchStart;
             "uploadStop": void;
             "uploadTotalBytes": number;

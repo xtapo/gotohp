@@ -27,6 +27,7 @@ const isOpen = defineModel<boolean>('open', { default: false })
 
 const autoSyncEnabled = ref(false)
 const syncOnStartup = ref(false)
+const autoAlbumEnabled = ref(false)
 const syncFolders = ref<string[]>([])
 const presetFolders = ref<PresetFolders>({ pictures: '', downloads: '' })
 
@@ -56,6 +57,7 @@ async function refreshData() {
     const config = await ConfigManager.GetSettings()
     autoSyncEnabled.value = config.autoSyncEnabled || false
     syncOnStartup.value = config.syncOnStartup || false
+    autoAlbumEnabled.value = config.autoAlbumEnabled || false
     syncFolders.value = config.syncFolders || []
 
     const currentStatus = await ConfigManager.GetAutoSyncStatus()
@@ -99,6 +101,20 @@ async function toggleSyncOnStartup(val: boolean) {
     await ConfigManager.SetSyncOnStartup(val)
   } catch (err) {
     console.error('Failed to update sync on startup:', err)
+  }
+}
+
+async function toggleAutoAlbum(val: boolean) {
+  autoAlbumEnabled.value = val
+  try {
+    await ConfigManager.SetAutoAlbumEnabled(val)
+    if (val) {
+      toast.success('Đã bật tự động gom Album theo thư mục')
+    } else {
+      toast.info('Đã tắt tự động gom Album theo thư mục')
+    }
+  } catch (err) {
+    console.error('Failed to update auto album:', err)
   }
 }
 
@@ -191,6 +207,7 @@ onUnmounted(() => {
     <SheetContent
       side="bottom"
       class="max-h-[85vh] overflow-y-auto px-6 py-5"
+      style="--wails-draggable: none"
     >
       <SheetHeader class="mb-4">
         <div class="flex items-center gap-2">
@@ -368,23 +385,44 @@ onUnmounted(() => {
         </div>
 
         <!-- Sync Options -->
-        <div class="rounded-xl border p-3 flex items-center justify-between text-xs">
-          <div class="flex flex-col gap-0.5">
-            <Label
-              for="sync-on-startup"
-              class="cursor-pointer font-medium"
-            >
-              Quét đồng bộ khi mở ứng dụng
-            </Label>
-            <p class="text-[11px] text-muted-foreground">
-              Tự động kiểm tra và tải lên các tệp mới khi gotohp khởi chạy.
-            </p>
+        <div class="flex flex-col gap-2">
+          <div class="rounded-xl border p-3 flex items-center justify-between text-xs">
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="sync-on-startup"
+                class="cursor-pointer font-medium"
+              >
+                Quét đồng bộ khi mở ứng dụng
+              </Label>
+              <p class="text-[11px] text-muted-foreground">
+                Tự động kiểm tra và tải lên các tệp mới khi gotohp khởi chạy.
+              </p>
+            </div>
+            <Switch
+              id="sync-on-startup"
+              :model-value="syncOnStartup"
+              @update:model-value="toggleSyncOnStartup"
+            />
           </div>
-          <Switch
-            id="sync-on-startup"
-            :model-value="syncOnStartup"
-            @update:model-value="toggleSyncOnStartup"
-          />
+
+          <div class="rounded-xl border p-3 flex items-center justify-between text-xs">
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="auto-album"
+                class="cursor-pointer font-medium"
+              >
+                Tự gom vào Album theo tên thư mục
+              </Label>
+              <p class="text-[11px] text-muted-foreground">
+                Ảnh/video đồng bộ sẽ tự động được thêm vào Album mang tên thư mục tương ứng trên Google Photos.
+              </p>
+            </div>
+            <Switch
+              id="auto-album"
+              :model-value="autoAlbumEnabled"
+              @update:model-value="toggleAutoAlbum"
+            />
+          </div>
         </div>
       </div>
     </SheetContent>

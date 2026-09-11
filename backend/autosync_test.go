@@ -80,3 +80,68 @@ func TestAutoSyncManagerWatchAndDebounce(t *testing.T) {
 		t.Errorf("expected 0 folders after removal, got %d", len(folders))
 	}
 }
+
+func TestAutoSyncSessionCache(t *testing.T) {
+	mgr, err := NewAutoSyncManager(nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewAutoSyncManager failed: %v", err)
+	}
+
+	testPath := filepath.Clean("/test/photos/image.jpg")
+	size := int64(1024)
+	modTime := int64(1700000000)
+
+	// Initially not synced
+	if mgr.isSessionSynced(testPath, size, modTime) {
+		t.Errorf("expected file not to be synced initially")
+	}
+
+	// Mark as synced
+	mgr.markSessionSynced(testPath, size, modTime)
+	if !mgr.isSessionSynced(testPath, size, modTime) {
+		t.Errorf("expected file to be marked synced")
+	}
+
+	// Modified size -> not synced
+	if mgr.isSessionSynced(testPath, size+1, modTime) {
+		t.Errorf("expected modified size to not be synced")
+	}
+
+	// Modified modTime -> not synced
+	if mgr.isSessionSynced(testPath, size, modTime+1) {
+		t.Errorf("expected modified modTime to not be synced")
+	}
+}
+
+func TestAutoSyncFolderAlbumConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "gotohp.config")
+	if err := LoadConfig(configPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cfgMgr := &ConfigManager{}
+	cfgMgr.SetAutoAlbumEnabled(true)
+	settings := cfgMgr.GetSettings()
+	if !settings.AutoAlbumEnabled {
+		t.Errorf("expected AutoAlbumEnabled to be true")
+	}
+
+	folder := filepath.Clean("/media/vacation")
+	albumKey := "AF1QipM9abcdefghij"
+
+	cfgMgr.SetFolderAlbumKey(folder, albumKey)
+	retrieved := cfgMgr.GetFolderAlbumKey(folder)
+	if retrieved != albumKey {
+		t.Errorf("expected album key %s, got %s", albumKey, retrieved)
+	}
+
+	// Verify persistence by reloading from disk
+	if err := LoadConfig(configPath); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := cfgMgr.GetFolderAlbumKey(folder)
+	if reloaded != albumKey {
+		t.Errorf("expected reloaded album key %s, got %s", albumKey, reloaded)
+	}
+}

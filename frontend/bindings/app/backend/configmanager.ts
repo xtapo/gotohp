@@ -120,6 +120,10 @@ export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> 
     return $Call.ByID(203272859, enabled);
 }
 
+export function SetAutoAlbumEnabled(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByName("app/backend.ConfigManager.SetAutoAlbumEnabled", enabled);
+}
+
 export function SetDeleteFromHost(deleteFromHost: boolean): $CancellablePromise<void> {
     return $Call.ByID(377345147, deleteFromHost);
 }
@@ -174,6 +178,10 @@ export function SetUpdateExistingPhotosToLive(updateExistingPhotosToLive: boolea
 
 export function SetUploadThreads(uploadThreads: number): $CancellablePromise<void> {
     return $Call.ByID(1692245880, uploadThreads);
+}
+
+export function SetMaxUploadSpeedMBps(speed: number): $CancellablePromise<void> {
+    return $Call.ByName("app/backend.ConfigManager.SetMaxUploadSpeedMBps", speed);
 }
 
 export function SetUseQuota(useQuota: boolean): $CancellablePromise<void> {

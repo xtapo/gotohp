@@ -58,6 +58,8 @@ function isSkippedUploadWarning(code: string): boolean {
 
 export interface UploadState {
   isUploading: boolean;
+  isPaused: boolean;
+  bandwidthLimitMBps: number;
   totalFiles: number;
   uploadedFiles: number;
   threads: Map<number, ThreadStatus>;
@@ -81,6 +83,8 @@ class UploadManager {
   // Reactive state that can be accessed by components
   public state = reactive<UploadState>({
     isUploading: false,
+    isPaused: false,
+    bandwidthLimitMBps: 0,
     totalFiles: 0,
     uploadedFiles: 0,
     threads: new Map<number, ThreadStatus>(),
@@ -114,6 +118,9 @@ class UploadManager {
     // Bind all methods to ensure 'this' context is preserved
     this.resetUploadResults = this.resetUploadResults.bind(this);
     this.cancelUpload = this.cancelUpload.bind(this);
+    this.pauseUpload = this.pauseUpload.bind(this);
+    this.resumeUpload = this.resumeUpload.bind(this);
+    this.setBandwidthLimit = this.setBandwidthLimit.bind(this);
     this.copyResultsAsJson = this.copyResultsAsJson.bind(this);
 
     this.setupEventListeners();
@@ -134,6 +141,7 @@ class UploadManager {
       this.state.uploadedFiles = 0;
       this.state.uploadedBytes = 0;
       this.state.isUploading = true;
+      this.state.isPaused = false;
       this.state.threads.clear();
       this.state.startTime = Date.now();
       this.state.uploadSpeed = 0;
@@ -216,6 +224,19 @@ class UploadManager {
     // Handle upload stop
     Events.On("uploadStop", () => {
       this.state.isUploading = false;
+      this.state.isPaused = false;
+    });
+
+    // Handle upload pause / resume events from backend
+    Events.On("uploadPaused", () => {
+      this.state.isPaused = true;
+      this.state.uploadSpeed = 0;
+    });
+
+    Events.On("uploadResumed", () => {
+      this.state.isPaused = false;
+      this.lastSpeedUpdate = Date.now();
+      this.lastBytesUploaded = this.state.uploadedBytes;
     });
 
     // Handle album creation progress
@@ -254,6 +275,11 @@ class UploadManager {
     const totalUploaded = this.completedBytes + activeUploadedBytes;
     this.state.uploadedBytes = totalUploaded;
 
+    if (this.state.isPaused) {
+      this.state.uploadSpeed = 0;
+      return;
+    }
+
     // Calculate speed (using rolling average)
     const now = Date.now();
     const timeDelta = now - this.lastSpeedUpdate;
@@ -282,6 +308,25 @@ class UploadManager {
     this.state.results.fail = [];
     this.state.results.skipped = [];
     this.state.results.warnings = [];
+  }
+
+  public pauseUpload() {
+    this.state.isPaused = true;
+    this.state.uploadSpeed = 0;
+    Events.Emit("uploadPause");
+  }
+
+  public resumeUpload() {
+    this.state.isPaused = false;
+    this.lastSpeedUpdate = Date.now();
+    this.lastBytesUploaded = this.state.uploadedBytes;
+    Events.Emit("uploadResume");
+  }
+
+  public setBandwidthLimit(limitMBps: number) {
+    this.state.bandwidthLimitMBps = limitMBps;
+    const bytesPerSec = limitMBps > 0 ? limitMBps * 1024 * 1024 : 0;
+    Events.Emit("uploadSetBandwidthLimit", bytesPerSec);
   }
 
   public cancelUpload() {

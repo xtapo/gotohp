@@ -12,9 +12,13 @@ import {
 } from '@/components/ui/tooltip'
 import { Info } from '@lucide/vue'
 
-defineEmits<{
+const emit = defineEmits<{
     (e: 'open-auto-sync'): void
 }>()
+
+function handleOpenAutoSync() {
+    emit('open-auto-sync')
+}
 
 import {
     NumberField,
@@ -37,9 +41,10 @@ interface Settings {
     disableUnsupportedFilesFilter: boolean
     setDateFromFilename: boolean
     uploadThreads: number
+    maxUploadSpeedMBps: number
 }
 
-type BooleanSetting = Exclude<keyof Settings, 'proxy' | 'uploadThreads'>
+type BooleanSetting = Exclude<keyof Settings, 'proxy' | 'uploadThreads' | 'maxUploadSpeedMBps'>
 
 const settings = ref<Settings>({
     proxy: '',
@@ -53,7 +58,8 @@ const settings = ref<Settings>({
     deleteFromHost: false,
     disableUnsupportedFilesFilter: false,
     setDateFromFilename: false,
-    uploadThreads: 0
+    uploadThreads: 0,
+    maxUploadSpeedMBps: 0
 })
 const isHydrating = ref(true)
 
@@ -77,7 +83,8 @@ onMounted(async () => {
             deleteFromHost: config.deleteFromHost || false,
             disableUnsupportedFilesFilter: config.disableUnsupportedFilesFilter || false,
             setDateFromFilename: config.setDateFromFilename || false,
-            uploadThreads: config.uploadThreads || 1
+            uploadThreads: config.uploadThreads || 1,
+            maxUploadSpeedMBps: config.maxUploadSpeedMBps || 0
         }
     } finally {
         await nextTick()
@@ -89,6 +96,12 @@ onMounted(async () => {
 watch(() => settings.value.proxy, async (newValue) => {
     if (isHydrating.value) return
     await ConfigManager.SetProxy(newValue)
+})
+
+watch(() => settings.value.maxUploadSpeedMBps, async (newValue) => {
+    if (isHydrating.value) return
+    const speed = newValue < 0 ? 0 : newValue
+    await ConfigManager.SetMaxUploadSpeedMBps(speed)
 })
 
 // Create individual watchers for each boolean setting
@@ -157,7 +170,10 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2.5 m-4">
+  <div
+    class="flex flex-col gap-2.5 m-4"
+    style="--wails-draggable: none"
+  >
     <NumberField
       v-model="settings.uploadThreads"
       class="flex items-center justify-between"
@@ -175,6 +191,40 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
         <NumberFieldIncrement class="cursor-pointer" />
       </NumberFieldContent>
     </NumberField>
+    <div class="flex flex-col gap-1.5 p-3 rounded-lg border bg-muted/20 select-none">
+      <div class="flex items-center justify-between">
+        <Label
+          for="max-upload-speed"
+          class="cursor-pointer"
+        >Max Upload Speed</Label>
+        <span class="text-xs font-semibold tabular-nums text-primary">
+          {{ settings.maxUploadSpeedMBps > 0 ? `${settings.maxUploadSpeedMBps} MB/s` : 'Unlimited' }}
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input
+          id="max-upload-speed"
+          v-model.number="settings.maxUploadSpeedMBps"
+          type="range"
+          min="0"
+          max="50"
+          step="1"
+          class="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+        >
+      </div>
+      <div class="flex justify-between gap-1 text-[10px] text-muted-foreground">
+        <button
+          v-for="preset in [0, 2, 5, 10, 20]"
+          :key="preset"
+          type="button"
+          class="px-2 py-0.5 rounded border text-[10px] transition-colors cursor-pointer"
+          :class="settings.maxUploadSpeedMBps === preset ? 'bg-primary text-primary-foreground border-primary font-medium' : 'bg-background hover:bg-muted'"
+          @click="settings.maxUploadSpeedMBps = preset"
+        >
+          {{ preset === 0 ? 'Unlimited' : `${preset} MB/s` }}
+        </button>
+      </div>
+    </div>
     <div class="flex items-center justify-between">
       <Label
         for="use-quota"
@@ -373,18 +423,19 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
     <div class="flex items-center justify-between pt-2 border-t">
       <div class="flex flex-col">
         <Label
-          class="cursor-pointer"
-          @click="$emit('open-auto-sync')"
+          class="cursor-pointer font-medium"
+          @click.stop="handleOpenAutoSync"
         >
           Folder Auto-Sync
         </Label>
         <span class="text-xs text-muted-foreground">Monitor folders & silent background upload</span>
       </div>
       <Button
+        type="button"
         size="sm"
         variant="outline"
-        class="h-7 text-xs cursor-pointer"
-        @click="$emit('open-auto-sync')"
+        class="h-7 text-xs cursor-pointer select-none"
+        @click.stop="handleOpenAutoSync"
       >
         Manage Folders
       </Button>

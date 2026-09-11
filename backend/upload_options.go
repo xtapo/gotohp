@@ -9,6 +9,7 @@ type UploadOptions struct {
 	Recursive                     bool
 	ExcludePattern                string
 	Threads                       int
+	MaxUploadSpeedMBps            int
 	ForceUpload                   bool
 	DeleteFromHost                bool
 	DisableUnsupportedFilesFilter bool
@@ -38,6 +39,7 @@ func (c Preferences) UploadOptions() UploadOptions {
 		Recursive:                     c.Recursive,
 		ExcludePattern:                c.ExcludePattern,
 		Threads:                       c.UploadThreads,
+		MaxUploadSpeedMBps:            c.MaxUploadSpeedMBps,
 		ForceUpload:                   c.ForceUpload,
 		DeleteFromHost:                c.DeleteFromHost,
 		DisableUnsupportedFilesFilter: c.DisableUnsupportedFilesFilter,

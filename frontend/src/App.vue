@@ -44,8 +44,17 @@ const albumNameOrKey = ref('')
 const tokenBindingEmail = ref('')
 const isExtractingTokenBinding = ref(false)
 const isAccountSetupOpen = ref(false)
+const isSettingsOpen = ref(false)
 const removingAccount = ref('')
 const isAutoSyncOpen = ref(false)
+
+function openAutoSyncFromSettings() {
+  isSettingsOpen.value = false
+  setTimeout(() => {
+    isAutoSyncOpen.value = true
+  }, 120)
+}
+
 const autoSyncStatus = ref<AutoSyncStatus>({
   enabled: false,
   isSyncing: false,
@@ -485,8 +494,8 @@ onUnmounted(() => {
               <span>Auto-Sync</span>
             </Button>
 
-            <Sheet>
-              <SheetTrigger>
+            <Sheet v-model:open="isSettingsOpen">
+              <SheetTrigger as-child>
                 <Button
                   variant="outline"
                   class="cursor-pointer select-none"
@@ -494,9 +503,13 @@ onUnmounted(() => {
                   Settings
                 </Button>
               </SheetTrigger>
-              <SheetContent side="bottom">
+              <SheetContent
+                side="bottom"
+                class="max-h-[85vh] overflow-y-auto"
+                style="--wails-draggable: none"
+              >
                 <TooltipProvider disable-hoverable-content>
-                  <SettingsPanel @open-auto-sync="isAutoSyncOpen = true" />
+                  <SettingsPanel @open-auto-sync="openAutoSyncFromSettings" />
                 </TooltipProvider>
               </SheetContent>
             </Sheet>

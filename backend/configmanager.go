@@ -38,13 +38,16 @@ type Preferences struct {
 	SkipIncompleteLivePhotos      bool     `json:"skipIncompleteLivePhotos" koanf:"skip_incomplete_live_photos"`
 	UpdateExistingPhotosToLive    bool     `json:"updateExistingPhotosToLive" koanf:"update_existing_photos_to_live"`
 	UploadThreads                 int      `json:"uploadThreads" koanf:"upload_threads"`
+	MaxUploadSpeedMBps            int      `json:"maxUploadSpeedMBps" koanf:"max_upload_speed_mbps"`
 	DeleteFromHost                bool     `json:"deleteFromHost" koanf:"delete_from_host"`
 	DisableUnsupportedFilesFilter bool     `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
-	SetDateFromFilename           bool     `json:"setDateFromFilename" koanf:"set_date_from_filename"`
-	ExcludePattern                string   `json:"excludePattern" koanf:"exclude_pattern"`
-	AutoSyncEnabled               bool     `json:"autoSyncEnabled" koanf:"auto_sync_enabled"`
-	SyncFolders                   []string `json:"syncFolders" koanf:"sync_folders"`
-	SyncOnStartup                 bool     `json:"syncOnStartup" koanf:"sync_on_startup"`
+	SetDateFromFilename           bool              `json:"setDateFromFilename" koanf:"set_date_from_filename"`
+	ExcludePattern                string            `json:"excludePattern" koanf:"exclude_pattern"`
+	AutoSyncEnabled               bool              `json:"autoSyncEnabled" koanf:"auto_sync_enabled"`
+	AutoAlbumEnabled              bool              `json:"autoAlbumEnabled" koanf:"auto_album_enabled"`
+	SyncFolders                   []string          `json:"syncFolders" koanf:"sync_folders"`
+	FolderAlbums                  map[string]string `json:"folderAlbums" koanf:"folder_albums"`
+	SyncOnStartup                 bool              `json:"syncOnStartup" koanf:"sync_on_startup"`
 	// AlbumName and AlbumAutoMode are per-session choices and are never persisted.
 	AlbumName     string `json:"albumName" koanf:"-"`
 	AlbumAutoMode bool   `json:"albumAutoMode" koanf:"-"`
@@ -58,30 +61,37 @@ type Config struct {
 
 // legacyConfig is the pre-sectioned flat layout, kept only for migration.
 type legacyConfig struct {
-	Credentials                   []string `koanf:"credentials"`
-	Selected                      string   `koanf:"selected"`
-	Proxy                         string   `koanf:"proxy"`
-	UseQuota                      bool     `koanf:"use_quota"`
-	Saver                         bool     `koanf:"saver"`
-	Recursive                     bool     `koanf:"recursive"`
-	ForceUpload                   bool     `koanf:"force_upload"`
-	PairLivePhotos                bool     `koanf:"pair_live_photos"`
-	SkipIncompleteLivePhotos      bool     `koanf:"skip_incomplete_live_photos"`
-	UpdateExistingPhotosToLive    bool     `koanf:"update_existing_photos_to_live"`
-	UploadThreads                 int      `koanf:"upload_threads"`
-	DeleteFromHost                bool     `koanf:"delete_from_host"`
-	DisableUnsupportedFilesFilter bool     `koanf:"disable_unsupported_files_filter"`
-	SetDateFromFilename           bool     `koanf:"set_date_from_filename"`
-	ExcludePattern                string   `koanf:"exclude_pattern"`
-	AutoSyncEnabled               bool     `koanf:"auto_sync_enabled"`
-	SyncFolders                   []string `koanf:"sync_folders"`
-	SyncOnStartup                 bool     `koanf:"sync_on_startup"`
+	Credentials                   []string          `koanf:"credentials"`
+	Selected                      string            `koanf:"selected"`
+	Proxy                         string            `koanf:"proxy"`
+	UseQuota                      bool              `koanf:"use_quota"`
+	Saver                         bool              `koanf:"saver"`
+	Recursive                     bool              `koanf:"recursive"`
+	ForceUpload                   bool              `koanf:"force_upload"`
+	PairLivePhotos                bool              `koanf:"pair_live_photos"`
+	SkipIncompleteLivePhotos      bool              `koanf:"skip_incomplete_live_photos"`
+	UpdateExistingPhotosToLive    bool              `koanf:"update_existing_photos_to_live"`
+	UploadThreads                 int               `koanf:"upload_threads"`
+	MaxUploadSpeedMBps            int               `koanf:"max_upload_speed_mbps"`
+	DeleteFromHost                bool              `koanf:"delete_from_host"`
+	DisableUnsupportedFilesFilter bool              `koanf:"disable_unsupported_files_filter"`
+	SetDateFromFilename           bool              `koanf:"set_date_from_filename"`
+	ExcludePattern                string            `koanf:"exclude_pattern"`
+	AutoSyncEnabled               bool              `koanf:"auto_sync_enabled"`
+	AutoAlbumEnabled              bool              `koanf:"auto_album_enabled"`
+	SyncFolders                   []string          `koanf:"sync_folders"`
+	FolderAlbums                  map[string]string `koanf:"folder_albums"`
+	SyncOnStartup                 bool              `koanf:"sync_on_startup"`
 }
 
 func (l legacyConfig) toConfig() Config {
 	var folders []string
 	if len(l.SyncFolders) > 0 {
 		folders = l.SyncFolders
+	}
+	var albums map[string]string
+	if len(l.FolderAlbums) > 0 {
+		albums = l.FolderAlbums
 	}
 	return Config{
 		Account: AccountConfig{Credentials: l.Credentials, Selected: l.Selected},
@@ -95,12 +105,15 @@ func (l legacyConfig) toConfig() Config {
 			SkipIncompleteLivePhotos:      l.SkipIncompleteLivePhotos,
 			UpdateExistingPhotosToLive:    l.UpdateExistingPhotosToLive,
 			UploadThreads:                 l.UploadThreads,
+			MaxUploadSpeedMBps:            l.MaxUploadSpeedMBps,
 			DeleteFromHost:                l.DeleteFromHost,
 			DisableUnsupportedFilesFilter: l.DisableUnsupportedFilesFilter,
 			SetDateFromFilename:           l.SetDateFromFilename,
 			ExcludePattern:                l.ExcludePattern,
 			AutoSyncEnabled:               l.AutoSyncEnabled,
+			AutoAlbumEnabled:              l.AutoAlbumEnabled,
 			SyncFolders:                   folders,
+			FolderAlbums:                  albums,
 			SyncOnStartup:                 l.SyncOnStartup,
 		},
 	}
@@ -223,6 +236,15 @@ func (g *ConfigManager) SetUploadThreads(uploadThreads int) {
 	})
 }
 
+func (g *ConfigManager) SetMaxUploadSpeedMBps(speed int) {
+	if speed < 0 {
+		speed = 0
+	}
+	updateAppConfig(func(config *Config) {
+		config.Preferences.MaxUploadSpeedMBps = speed
+	})
+}
+
 func (g *ConfigManager) SetAlbumName(albumName string) {
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -316,6 +338,29 @@ func (g *ConfigManager) SetAutoSyncEnabled(enabled bool) {
 	if mgr := getActiveAutoSyncManager(); mgr != nil {
 		mgr.SetEnabled(enabled)
 	}
+}
+
+func (g *ConfigManager) SetAutoAlbumEnabled(enabled bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.AutoAlbumEnabled = enabled
+	})
+}
+
+func (g *ConfigManager) GetFolderAlbumKey(folder string) string {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	clean := filepath.Clean(folder)
+	return AppConfig.Preferences.FolderAlbums[clean]
+}
+
+func (g *ConfigManager) SetFolderAlbumKey(folder string, albumKey string) {
+	clean := filepath.Clean(folder)
+	updateAppConfig(func(config *Config) {
+		if config.Preferences.FolderAlbums == nil {
+			config.Preferences.FolderAlbums = make(map[string]string)
+		}
+		config.Preferences.FolderAlbums[clean] = albumKey
+	})
 }
 
 func (g *ConfigManager) AddSyncFolder(folder string) error {
@@ -976,6 +1021,10 @@ func loadAppConfig() Config {
 
 	if len(c.Preferences.SyncFolders) == 0 {
 		c.Preferences.SyncFolders = nil
+	}
+
+	if len(c.Preferences.FolderAlbums) == 0 {
+		c.Preferences.FolderAlbums = nil
 	}
 
 	return c
