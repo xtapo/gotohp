@@ -9,7 +9,19 @@ import {
 } from '@/components/ui/sheet'
 import { useColorMode } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { UserPlus, History, RefreshCw, AlertTriangle, ChevronDown, ChevronUp } from '@lucide/vue'
+import {
+  UserPlus,
+  History,
+  RefreshCw,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  UploadCloud,
+  FolderPlus,
+  Sparkles,
+  CheckCircle2,
+} from '@lucide/vue'
 import { ConfigManager, type AutoSyncStatus } from '../bindings/app/backend'
 import { Events } from '@wailsio/runtime'
 import Button from "./components/ui/button/Button.vue"
@@ -28,7 +40,7 @@ import { toast } from "vue-sonner"
 useColorMode().value = "dark"
 
 const { state: uploadState } = uploadManager
-const copyButtonText = ref('Copy as JSON');
+const copyButtonText = ref('Sao chép JSON');
 
 // Drag state for dual drop zones
 const isDraggingFiles = ref(false)
@@ -206,11 +218,9 @@ onMounted(async () => {
 
 const handleCopyClick = () => {
   uploadManager.copyResultsAsJson();
-  copyButtonText.value = 'Copied!';
-  setTimeout(() => copyButtonText.value = 'Copy as JSON', 1000);
+  copyButtonText.value = 'Đã sao chép!';
+  setTimeout(() => copyButtonText.value = 'Sao chép JSON', 1200);
 };
-
-
 
 // Global drag event handlers to detect file dragging
 let dragLeaveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -218,7 +228,6 @@ let dragLeaveTimeout: ReturnType<typeof setTimeout> | null = null
 const onDragEnter = (e: DragEvent) => {
   if (!e.dataTransfer?.types.includes('Files')) return
   
-  // Clear any pending drag leave timeout
   if (dragLeaveTimeout) {
     clearTimeout(dragLeaveTimeout)
     dragLeaveTimeout = null
@@ -231,7 +240,6 @@ const onDragOver = (e: DragEvent) => {
   if (!e.dataTransfer?.types.includes('Files')) return
   e.preventDefault()
   
-  // Clear any pending drag leave timeout - we're still dragging
   if (dragLeaveTimeout) {
     clearTimeout(dragLeaveTimeout)
     dragLeaveTimeout = null
@@ -241,26 +249,21 @@ const onDragOver = (e: DragEvent) => {
 const onDragLeave = (e: DragEvent) => {
   if (!e.dataTransfer?.types.includes('Files')) return
   
-  // Use timeout to detect if we've truly left the window
-  // dragover will cancel this if we're still in the window
   if (dragLeaveTimeout) {
     clearTimeout(dragLeaveTimeout)
   }
   dragLeaveTimeout = setTimeout(() => {
     isDraggingFiles.value = false
     dragLeaveTimeout = null
-  }, 50)
+  }, 60)
 }
 
 const onDrop = () => {
-  // Clear any pending timeout
   if (dragLeaveTimeout) {
     clearTimeout(dragLeaveTimeout)
     dragLeaveTimeout = null
   }
   
-  // Delay resetting isDraggingFiles to allow Wails to process the drop target
-  // before Vue re-renders and hides the drop zones
   setTimeout(() => {
     isDraggingFiles.value = false
   }, 100)
@@ -268,29 +271,25 @@ const onDrop = () => {
 
 // Album upload confirmation
 const confirmAlbumUpload = async () => {
-  // Set album name in backend (not persisted to disk)
   await ConfigManager.SetAlbumName(albumNameOrKey.value)
   await ConfigManager.SetAlbumAutoMode(false)
-  // Start upload with pending files
   Events.Emit('startUpload', { files: pendingFiles.value })
   showAlbumInput.value = false
   pendingFiles.value = []
   pendingFileCount.value = 0
-  albumNameOrKey.value = '' // Reset for next upload
+  albumNameOrKey.value = ''
 }
 
 const cancelAlbumUpload = () => {
   showAlbumInput.value = false
   pendingFiles.value = []
   pendingFileCount.value = 0
-  albumNameOrKey.value = '' // Reset on cancel too
+  albumNameOrKey.value = ''
 }
 
-// Handle album error event
 const albumErrorHandler = (e: Event) => {
   const event = e as CustomEvent<{ AlbumName: string; Error: string }>
   const { AlbumName, Error } = event.detail
-  // Check if it's a 404 error (album key not found)
   if (Error.includes('404')) {
     toast.error('Album not found', {
       description: `The album key "${AlbumName}" does not exist or is invalid.`,
@@ -321,12 +320,10 @@ onMounted(() => {
   window.addEventListener('albumError', albumErrorHandler)
   window.addEventListener('uploadError', uploadErrorHandler)
 
-  // Listen for files-dropped event from backend
   Events.On('files-dropped', async (event: { data: { files: string[]; dropZone: string } }) => {
     const { files, dropZone } = event.data
 
     if (dropZone === 'album') {
-      // Show album input screen
       pendingFiles.value = files
       pendingFileCount.value = files.length
       showAlbumInput.value = true
@@ -360,194 +357,213 @@ onUnmounted(() => {
 
 <template>
   <main
-    class="w-screen h-screen flex flex-col items-center"
+    class="w-screen h-screen flex flex-col items-center bg-[#090a0f] text-foreground ambient-mesh relative overflow-hidden select-none"
     style="--wails-draggable: drag"
   >
-    <!-- Drop zones shown when dragging files -->
+    <!-- FULLSCREEN DRAG OVERLAY (Triggered when dragging files over window) -->
     <div
       v-if="!uploadState.isUploading && isDraggingFiles && options.length > 0"
-      class="w-screen h-screen flex flex-col gap-3 p-6"
+      class="fixed inset-0 z-50 p-4 flex flex-col gap-3 bg-[#090a0f]/95 backdrop-blur-2xl animate-in fade-in duration-200"
       style="--wails-draggable: none"
     >
+      <!-- Zone 1: Regular Upload -->
       <div
         data-file-drop-target
         data-drop-zone="regular"
-        class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/50 rounded-xl transition-all duration-200 drop-zone"
+        class="flex-1 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/20 bg-white/[0.02] hover:bg-emerald-500/10 hover:border-emerald-500/60 transition-all duration-200 drop-zone group cursor-pointer p-4 text-center"
       >
-        <h2 class="text-xl font-semibold select-none text-muted-foreground">
-          Upload Only
+        <div class="drop-zone-icon size-12 rounded-2xl bg-zinc-800/80 border border-white/10 flex items-center justify-center text-zinc-300 group-hover:text-emerald-400 group-hover:scale-110 transition-all mb-2 shadow-lg">
+          <UploadCloud class="size-6 stroke-[1.75]" />
+        </div>
+        <h2 class="drop-zone-title text-base font-semibold text-zinc-200 select-none tracking-tight">
+          Upload Trực Tiếp
         </h2>
-        <p class="text-sm text-muted-foreground/70 mt-2 select-none text-center px-4">
-          Upload files without adding to any album
+        <p class="drop-zone-desc text-xs text-zinc-400 mt-1 select-none max-w-[260px]">
+          Tải ảnh và video vào Google Photos mà không tạo album
         </p>
       </div>
+
+      <!-- Zone 2: Upload to Album -->
       <div
         data-file-drop-target
         data-drop-zone="album"
-        class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/50 rounded-xl transition-all duration-200 drop-zone"
+        class="flex-1 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/20 bg-white/[0.02] hover:bg-blue-500/10 hover:border-blue-500/60 transition-all duration-200 drop-zone group cursor-pointer p-4 text-center"
       >
-        <h2 class="text-xl font-semibold select-none text-muted-foreground">
-          Upload to Album
+        <div class="drop-zone-icon size-12 rounded-2xl bg-zinc-800/80 border border-white/10 flex items-center justify-center text-zinc-300 group-hover:text-blue-400 group-hover:scale-110 transition-all mb-2 shadow-lg">
+          <FolderPlus class="size-6 stroke-[1.75]" />
+        </div>
+        <h2 class="drop-zone-title text-base font-semibold text-zinc-200 select-none tracking-tight">
+          Tải Vào Album
         </h2>
-        <p class="text-sm text-muted-foreground/70 mt-2 select-none text-center px-4">
-          Upload and add to a specific album (you'll enter the name)
+        <p class="drop-zone-desc text-xs text-zinc-400 mt-1 select-none max-w-[260px]">
+          Chỉ định hoặc tạo album mới để nhóm các tệp tải lên
         </p>
       </div>
+
+      <!-- Zone 3: Auto Album -->
       <div
         data-file-drop-target
         data-drop-zone="auto-album"
-        class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/50 rounded-xl transition-all duration-200 drop-zone"
+        class="flex-1 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/20 bg-white/[0.02] hover:bg-amber-500/10 hover:border-amber-500/60 transition-all duration-200 drop-zone group cursor-pointer p-4 text-center"
       >
-        <h2 class="text-xl font-semibold select-none text-muted-foreground">
-          Auto Album
+        <div class="drop-zone-icon size-12 rounded-2xl bg-zinc-800/80 border border-white/10 flex items-center justify-center text-zinc-300 group-hover:text-amber-400 group-hover:scale-110 transition-all mb-2 shadow-lg">
+          <Sparkles class="size-6 stroke-[1.75]" />
+        </div>
+        <h2 class="drop-zone-title text-base font-semibold text-zinc-200 select-none tracking-tight">
+          Tự Động Tạo Album
         </h2>
-        <p class="text-sm text-muted-foreground/70 mt-2 select-none text-center px-4">
-          Upload and create albums automatically based on folder names
+        <p class="drop-zone-desc text-xs text-zinc-400 mt-1 select-none max-w-[260px]">
+          Tự tạo album Google Photos tự động theo tên thư mục
         </p>
       </div>
     </div>
 
-    <!-- Normal UI (not dragging) -->
+    <!-- MAIN INTERFACE CONTAINER (When not uploading) -->
     <div
       v-else-if="!uploadState.isUploading"
-      class="w-screen h-screen flex flex-col items-center gap-4 max-w-md px-6 pt-30"
+      class="w-full h-full flex flex-col justify-between p-4 max-w-[420px] mx-auto select-none"
       data-file-drop-target
     >
+      <!-- STATE 1: NO GOOGLE ACCOUNT CONNECTED -->
       <template v-if="options.length === 0">
-        <div class="flex max-w-xs flex-col items-center gap-4 text-center">
-          <div class="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <UserPlus class="size-5" />
+        <div class="flex items-center justify-between w-full pt-1 px-1">
+          <div class="flex items-center gap-2">
+            <span class="size-2 rounded-full bg-zinc-600" />
+            <span class="text-xs font-medium text-zinc-400">Chưa kết nối</span>
           </div>
-          <div class="flex flex-col gap-1">
-            <h1 class="text-xl font-semibold select-none">
-              Connect Google Photos
-            </h1>
-            <p class="text-sm text-muted-foreground select-none">
-              Add an account before uploading photos and videos.
+          <Sheet v-model:open="isSettingsOpen">
+            <SheetTrigger as-child>
+              <button
+                type="button"
+                class="size-8.5 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-white transition-all shadow-sm cursor-pointer"
+                title="Cài đặt"
+                style="--wails-draggable: none"
+              >
+                <Settings class="size-4" />
+              </button>
+            </SheetTrigger>
+            <SheetContent
+              side="bottom"
+              class="max-h-[85vh] overflow-y-auto"
+              style="--wails-draggable: none"
+            >
+              <TooltipProvider disable-hoverable-content>
+                <SettingsPanel @open-auto-sync="openAutoSyncFromSettings" />
+              </TooltipProvider>
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        <div class="flex-1 my-4 w-full rounded-2xl border border-white/10 bg-zinc-900/50 backdrop-blur-xl p-6 flex flex-col items-center justify-center gap-4 text-center shadow-xl">
+          <div class="size-14 rounded-2xl bg-gradient-to-tr from-blue-500/20 via-emerald-500/20 to-amber-500/20 border border-white/10 flex items-center justify-center text-zinc-200 shadow-inner">
+            <UserPlus class="size-7 text-emerald-400" />
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">
+              Kết Nối Google Photos
+            </h2>
+            <p class="text-xs text-zinc-400 mt-1 max-w-[240px] leading-relaxed">
+              Thêm tài khoản Google để bắt đầu sao lưu ảnh và video chất lượng cao không giới hạn.
             </p>
           </div>
           <Button
-            class="cursor-pointer select-none"
+            class="mt-2 h-9 px-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-semibold text-xs shadow-lg shadow-emerald-500/20 cursor-pointer"
+            style="--wails-draggable: none"
             @click="openAccountSetup"
           >
-            Add Google account
+            Thêm tài khoản Google
           </Button>
+        </div>
+
+        <div class="w-full text-center text-[11px] text-zinc-600 pb-1">
+          gotohp • Google Photos Desktop Uploader
         </div>
       </template>
 
+      <!-- STATE 2: READY WITH ACCOUNT -->
       <template v-else>
-        <!-- Show album input screen when files dropped on album zone -->
+        <!-- ALBUM INPUT VIEW (When files dropped on album zone) -->
         <template v-if="showAlbumInput">
+          <div class="flex items-center justify-between w-full pt-1 px-1">
+            <div class="flex items-center gap-2">
+              <span class="size-2 rounded-full bg-blue-400 animate-pulse" />
+              <span class="text-xs font-medium text-zinc-300">Tạo Album</span>
+            </div>
+          </div>
+
           <div
-            class="flex flex-col items-center justify-center gap-6 p-8"
+            class="flex-1 my-3 w-full rounded-2xl border border-white/10 bg-zinc-900/80 backdrop-blur-xl p-6 flex flex-col items-center justify-center gap-4 text-center shadow-2xl"
             style="--wails-draggable: none"
           >
-            <h1 class="text-xl font-semibold select-none">
-              Upload to Album
-            </h1>
-            <p class="text-muted-foreground select-none">
-              {{ pendingFileCount }} file(s) ready to upload
-            </p>
+            <div class="size-13 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shadow-inner">
+              <FolderPlus class="size-6.5" />
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-zinc-100 tracking-tight">
+                Tải Vào Album
+              </h2>
+              <p class="text-xs text-zinc-400 mt-1">
+                {{ pendingFileCount }} tệp đã sẵn sàng tải lên
+              </p>
+            </div>
             
-            <div class="flex flex-col gap-2 w-full max-w-xs">
+            <div class="flex flex-col gap-1.5 w-full max-w-xs text-left">
               <Label
                 for="album-input"
-                class="text-muted-foreground text-sm"
-              >Album name or key</Label>
+                class="text-zinc-400 text-xs font-medium"
+              >Tên album hoặc Key album</Label>
               <Input
                 id="album-input"
                 v-model="albumNameOrKey"
-                placeholder="Album name or AF1Qip... key"
+                placeholder="Nhập tên album hoặc key AF1Qip..."
+                class="h-9 text-xs bg-zinc-950/60 border-white/15 focus-visible:ring-blue-500/40"
                 autofocus
               />
             </div>
 
-            <div class="flex gap-4">
+            <div class="flex gap-2.5 w-full max-w-xs pt-1">
               <Button
                 variant="outline"
-                class="cursor-pointer select-none"
+                class="flex-1 h-9 rounded-xl border-white/10 text-xs cursor-pointer select-none"
                 @click="cancelAlbumUpload"
               >
-                Cancel
+                Hủy
               </Button>
               <Button
-                class="cursor-pointer select-none"
+                class="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs cursor-pointer select-none shadow-lg shadow-blue-600/20"
                 :disabled="!albumNameOrKey.trim()"
                 @click="confirmAlbumUpload"
               >
-                Upload
+                Tải lên
               </Button>
             </div>
           </div>
         </template>
 
-        <!-- Normal UI when not dragging -->
+        <!-- NORMAL DASHBOARD VIEW -->
         <template v-else>
-          <h1 class="text-xl font-semibold select-none">
-            Drop files to upload
-          </h1>
-          <GoogleAccountSelect
-            v-model="selectedOption"
-            :options="options"
-            :removing-account="removingAccount"
-            @item-removed="removeCredentials"
-            @add="openAccountSetup"
-          />
-          <div
-            v-if="tokenBindingEmail"
-            class="w-full max-w-xs border rounded-lg p-3 flex flex-col gap-3"
-            style="--wails-draggable: none"
-          >
-            <p class="text-sm text-muted-foreground">
-              This credential needs a token binding key from the rooted Android device it was captured from.
-            </p>
-            <Button
-              class="cursor-pointer select-none"
-              :disabled="isExtractingTokenBinding"
-              @click="addTokenBindingAliasFromADB"
-            >
-              {{ isExtractingTokenBinding ? 'Reading ADB...' : 'Read from ADB' }}
-            </Button>
-          </div>
+          <!-- TOP HEADER ROW -->
+          <header class="flex items-center justify-between gap-2 w-full pt-1 px-1">
+            <!-- Account Selector Pill -->
+            <GoogleAccountSelect
+              v-model="selectedOption"
+              :options="options"
+              :removing-account="removingAccount"
+              @item-removed="removeCredentials"
+              @add="openAccountSetup"
+            />
 
-          <div class="flex gap-2.5">
-            <Button
-              variant="outline"
-              class="cursor-pointer select-none gap-2"
-              @click="isAutoSyncOpen = true"
-            >
-              <span
-                class="size-2 rounded-full"
-                :class="[
-                  !autoSyncStatus.enabled ? 'bg-zinc-500' : autoSyncStatus.isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
-                ]"
-              />
-              <span>Auto-Sync</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              class="cursor-pointer select-none gap-1.5 relative"
-              @click="isHistoryOpen = true"
-            >
-              <History class="size-3.5 text-muted-foreground" />
-              <span>Lịch sử</span>
-              <span
-                v-if="failedQueueCount > 0"
-                class="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-destructive text-destructive-foreground"
-              >
-                {{ failedQueueCount }}
-              </span>
-            </Button>
-
+            <!-- Settings Sheet Trigger -->
             <Sheet v-model:open="isSettingsOpen">
               <SheetTrigger as-child>
-                <Button
-                  variant="outline"
-                  class="cursor-pointer select-none"
+                <button
+                  type="button"
+                  class="size-8.5 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 hover:border-white/20 text-zinc-400 hover:text-white transition-all shadow-sm cursor-pointer"
+                  title="Cài đặt"
+                  style="--wails-draggable: none"
                 >
-                  Settings
-                </Button>
+                  <Settings class="size-4" />
+                </button>
               </SheetTrigger>
               <SheetContent
                 side="bottom"
@@ -559,103 +575,121 @@ onUnmounted(() => {
                 </TooltipProvider>
               </SheetContent>
             </Sheet>
+          </header>
+
+          <!-- TOKEN BINDING PROMPT (If needed for rooted device) -->
+          <div
+            v-if="tokenBindingEmail"
+            class="w-full my-2 border border-amber-500/20 bg-amber-500/10 rounded-xl p-3 flex flex-col gap-2.5"
+            style="--wails-draggable: none"
+          >
+            <p class="text-xs text-amber-200/90 leading-relaxed">
+              Tài khoản này cần token binding key từ thiết bị Android đã root.
+            </p>
+            <Button
+              size="sm"
+              class="cursor-pointer select-none text-xs h-7.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+              :disabled="isExtractingTokenBinding"
+              @click="addTokenBindingAliasFromADB"
+            >
+              {{ isExtractingTokenBinding ? 'Đang đọc qua ADB...' : 'Đọc từ ADB' }}
+            </Button>
           </div>
 
+          <!-- RECENT UPLOAD RESULTS SUMMARY CARD (When finished previous uploads) -->
           <div
             v-if="uploadState.uploadedFiles > 0 || uploadState.results.fail.length > 0"
-            class="flex flex-col items-center gap-2.5 border rounded-xl p-4 mt-4 w-full max-w-sm bg-card/60 backdrop-blur-sm"
+            class="my-2.5 w-full rounded-2xl border border-white/10 bg-zinc-900/70 backdrop-blur-xl p-3.5 flex flex-col gap-2.5 shadow-xl"
+            style="--wails-draggable: none"
           >
             <div class="flex items-center justify-between w-full">
-              <h2 class="text-sm font-semibold select-none">
-                Kết Quả Upload
-              </h2>
+              <div class="flex items-center gap-1.5">
+                <CheckCircle2 class="size-4 text-emerald-400" />
+                <h3 class="text-xs font-semibold text-zinc-200">
+                  Kết Quả Tải Lên Gần Đây
+                </h3>
+              </div>
               <span
                 v-if="uploadState.results.fail.length > 0"
-                class="text-xs text-destructive font-medium bg-destructive/10 px-2 py-0.5 rounded-full border border-destructive/20"
+                class="text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20"
               >
                 {{ uploadState.results.fail.length }} lỗi
               </span>
             </div>
 
             <!-- Stats grid -->
-            <div class="grid grid-cols-2 gap-2 w-full text-xs">
-              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
-                <span class="text-muted-foreground">Thành công:</span>
-                <span class="font-semibold text-emerald-500">{{ uploadState.results.success.length }}</span>
+            <div class="grid grid-cols-3 gap-1.5 w-full text-xs">
+              <div class="flex flex-col items-center justify-center p-1.5 rounded-lg bg-white/[0.03] border border-white/5">
+                <span class="text-[10px] text-zinc-500">Thành công</span>
+                <span class="font-semibold text-emerald-400">{{ uploadState.results.success.length }}</span>
               </div>
-              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
-                <span class="text-muted-foreground">Thất bại:</span>
-                <span class="font-semibold text-destructive">{{ uploadState.results.fail.length }}</span>
+              <div class="flex flex-col items-center justify-center p-1.5 rounded-lg bg-white/[0.03] border border-white/5">
+                <span class="text-[10px] text-zinc-500">Thất bại</span>
+                <span
+                  class="font-semibold"
+                  :class="uploadState.results.fail.length > 0 ? 'text-red-400' : 'text-zinc-400'"
+                >{{ uploadState.results.fail.length }}</span>
               </div>
-              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
-                <span class="text-muted-foreground">Bỏ qua:</span>
-                <span class="font-semibold text-amber-500">{{ uploadState.results.skipped.length }}</span>
-              </div>
-              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
-                <span class="text-muted-foreground">Cảnh báo:</span>
-                <span class="font-semibold text-foreground">{{ uploadState.results.warnings.length }}</span>
+              <div class="flex flex-col items-center justify-center p-1.5 rounded-lg bg-white/[0.03] border border-white/5">
+                <span class="text-[10px] text-zinc-500">Bỏ qua</span>
+                <span class="font-semibold text-amber-400">{{ uploadState.results.skipped.length }}</span>
               </div>
             </div>
 
-            <!-- 1-CLICK RETRY FAILED BUTTON WHEN FAILURES OCCUR -->
+            <!-- Retry failed button if failures exist -->
             <div
               v-if="uploadState.results.fail.length > 0"
-              class="w-full flex flex-col gap-2 pt-1 border-t border-border/40"
+              class="w-full flex flex-col gap-2 pt-1 border-t border-white/5"
             >
               <Button
                 size="sm"
-                class="w-full cursor-pointer select-none bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs h-8 shadow-sm transition-colors"
+                class="w-full cursor-pointer select-none bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs h-7.5 rounded-lg transition-colors shadow-sm"
                 @click="retryCurrentFailedFiles"
               >
-                <RefreshCw class="size-3.5 mr-1.5" />
-                Thử lại tất cả file lỗi ({{ uploadState.results.fail.length }})
+                <RefreshCw class="size-3 mr-1.5" />
+                Thử lại các tệp lỗi ({{ uploadState.results.fail.length }})
               </Button>
 
-              <!-- Expand/collapse failed items details -->
               <button
                 type="button"
-                class="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground pt-1 cursor-pointer select-none"
+                class="flex items-center justify-between w-full text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer select-none"
                 @click="showFailedDetails = !showFailedDetails"
               >
-                <span class="flex items-center gap-1 text-destructive font-medium">
+                <span class="flex items-center gap-1 text-red-400 font-medium">
                   <AlertTriangle class="size-3" />
-                  Chi tiết các file bị lỗi
+                  Xem chi tiết file lỗi
                 </span>
                 <component
                   :is="showFailedDetails ? ChevronUp : ChevronDown"
-                  class="size-3.5"
+                  class="size-3"
                 />
               </button>
 
-              <!-- Failed items list -->
               <div
                 v-if="showFailedDetails && uploadState.results.failedItems?.length"
-                class="max-h-40 overflow-y-auto space-y-1.5 pr-1 w-full"
+                class="max-h-28 overflow-y-auto space-y-1 pr-1 w-full text-left"
               >
                 <div
                   v-for="(item, idx) in uploadState.results.failedItems"
                   :key="idx"
-                  class="p-2 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive text-left"
+                  class="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300"
                 >
-                  <p class="font-medium truncate text-foreground">
+                  <p class="font-medium truncate text-zinc-200">
                     {{ item.fileName }}
                   </p>
-                  <p class="text-[11px] text-muted-foreground truncate font-mono mt-0.5">
-                    {{ item.path }}
-                  </p>
-                  <p class="text-[11px] font-normal mt-1 leading-tight text-destructive dark:text-red-400">
-                    Lý do: {{ item.error }}
+                  <p class="text-[10px] text-red-400 mt-0.5 truncate">
+                    {{ item.error }}
                   </p>
                 </div>
               </div>
             </div>
 
-            <!-- Footer action buttons -->
-            <div class="flex items-center gap-2 w-full pt-1">
+            <!-- Action buttons -->
+            <div class="flex items-center gap-2 w-full pt-0.5">
               <Button
                 variant="outline"
                 size="sm"
-                class="flex-1 cursor-pointer select-none text-xs h-8"
+                class="flex-1 cursor-pointer select-none text-[11px] h-7 rounded-lg border-white/10"
                 @click="handleCopyClick"
               >
                 {{ copyButtonText }}
@@ -663,22 +697,109 @@ onUnmounted(() => {
               <Button
                 variant="ghost"
                 size="sm"
-                class="cursor-pointer select-none text-xs h-8 text-muted-foreground hover:text-foreground"
+                class="cursor-pointer select-none text-[11px] h-7 text-zinc-400 hover:text-zinc-200"
                 @click="isHistoryOpen = true"
               >
-                Xem lịch sử
+                Lịch sử
               </Button>
             </div>
           </div>
+
+          <!-- HERO DROP TARGET CARD (The Centerpiece of gotohp) -->
+          <div
+            data-file-drop-target
+            data-drop-zone="regular"
+            class="group relative flex-1 my-3 w-full rounded-2xl border border-dashed border-white/15 hover:border-emerald-500/50 bg-gradient-to-b from-white/[0.04] to-transparent hover:from-emerald-500/[0.03] backdrop-blur-md p-6 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-xl drop-zone cursor-default"
+            style="--wails-draggable: none"
+          >
+            <!-- Ambient hover halo -->
+            <div class="absolute inset-0 rounded-2xl bg-radial from-emerald-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+            <!-- Elevated Icon with Glow -->
+            <div class="relative mb-3.5">
+              <div class="absolute -inset-1 rounded-2xl bg-emerald-500/20 blur-md group-hover:bg-emerald-500/35 transition-all duration-300" />
+              <div class="relative size-14 rounded-2xl bg-gradient-to-b from-zinc-800 to-zinc-900 border border-white/15 shadow-xl flex items-center justify-center text-emerald-400 group-hover:scale-105 group-hover:text-emerald-300 transition-all duration-300">
+                <UploadCloud class="size-7 stroke-[1.75]" />
+              </div>
+            </div>
+
+            <!-- Headlines -->
+            <h2 class="text-sm font-semibold text-zinc-100 tracking-tight select-none">
+              Kéo & Thả ảnh, video vào đây
+            </h2>
+            <p class="text-xs text-zinc-400 mt-1 select-none max-w-[240px] leading-relaxed">
+              Hỗ trợ kéo thả cả thư mục hoặc nhiều tệp cùng lúc
+            </p>
+
+            <!-- Supported Format Chips -->
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-zinc-400 select-none">
+              <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">JPG</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">PNG</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">MP4</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">RAW</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">Live Photo</span>
+            </div>
+
+            <!-- Smart Drop Modes Tip -->
+            <div class="mt-3.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+              <Sparkles class="size-3 text-amber-400/80" />
+              <span>Kéo tệp vào cửa sổ để chọn 3 chế độ tải</span>
+            </div>
+          </div>
+
+          <!-- FOOTER ACTION DOCK -->
+          <footer class="flex items-center gap-2 w-full pt-1 px-1">
+            <!-- Auto-Sync Status Button -->
+            <button
+              type="button"
+              class="flex-1 h-9 px-3 rounded-xl bg-zinc-900/80 hover:bg-zinc-800/90 border border-white/10 hover:border-white/20 text-xs font-medium text-zinc-200 transition-all flex items-center justify-between cursor-pointer shadow-sm"
+              style="--wails-draggable: none"
+              @click="isAutoSyncOpen = true"
+            >
+              <div class="flex items-center gap-2">
+                <span
+                  class="size-2 rounded-full"
+                  :class="[
+                    !autoSyncStatus.enabled ? 'bg-zinc-600' : autoSyncStatus.isSyncing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                  ]"
+                />
+                <span>Auto-Sync</span>
+              </div>
+              <span class="text-[11px] text-zinc-500 font-normal">
+                {{ !autoSyncStatus.enabled ? 'Tắt' : autoSyncStatus.isSyncing ? 'Đang đồng bộ...' : `${autoSyncStatus.folderCount || 0} thư mục` }}
+              </span>
+            </button>
+
+            <!-- Upload History Button -->
+            <button
+              type="button"
+              class="h-9 px-3.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800/90 border border-white/10 hover:border-white/20 text-xs font-medium text-zinc-200 transition-all flex items-center gap-1.5 relative cursor-pointer shadow-sm"
+              style="--wails-draggable: none"
+              @click="isHistoryOpen = true"
+            >
+              <History class="size-3.5 text-zinc-400" />
+              <span>Lịch sử</span>
+              <span
+                v-if="failedQueueCount > 0"
+                class="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-red-500 text-white shadow-sm"
+              >
+                {{ failedQueueCount }}
+              </span>
+            </button>
+          </footer>
         </template>
       </template>
     </div>
+
+    <!-- STATE 3: UPLOAD IN PROGRESS -->
     <div
       v-if="uploadState.isUploading"
       class="w-full h-full"
     >
       <Upload />
     </div>
+
+    <!-- MODALS & OVERLAYS -->
     <GoogleAuthSetup
       v-model:open="isAccountSetupOpen"
       @account-added="refreshCredentials"

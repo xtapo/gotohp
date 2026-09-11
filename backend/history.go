@@ -183,6 +183,17 @@ func (s *HistoryStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_items_session_id ON upload_items(session_id);
 	CREATE INDEX IF NOT EXISTS idx_items_status_resolved ON upload_items(status, resolved);
 	CREATE INDEX IF NOT EXISTS idx_items_file_path ON upload_items(file_path);
+
+	CREATE TABLE IF NOT EXISTS autosync_files (
+		path TEXT PRIMARY KEY,
+		size INTEGER NOT NULL,
+		mod_time INTEGER NOT NULL,
+		sha1 TEXT,
+		media_key TEXT,
+		synced_at INTEGER NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_autosync_files_lookup ON autosync_files(path, size, mod_time);
 	`
 	_, err := s.db.Exec(schema)
 	return err
@@ -552,4 +563,61 @@ func (s *HistoryStore) GetAllFailedFilesForRetry() ([]string, error) {
 		existingPaths = []string{}
 	}
 	return existingPaths, nil
+}
+
+// IsAutoSyncFileSynced checks if a file with the given size and modTime was previously synced.
+func (s *HistoryStore) IsAutoSyncFileSynced(path string, size, modTime int64) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, nil
+	}
+	canonical := canonicalUploadPath(path)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var storedSize, storedModTime int64
+	err := s.db.QueryRow(`SELECT size, mod_time FROM autosync_files WHERE path = ?`, canonical).Scan(&storedSize, &storedModTime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return storedSize == size && storedModTime == modTime, nil
+}
+
+// RecordAutoSyncFile records or updates a synced file record in SQLite.
+func (s *HistoryStore) RecordAutoSyncFile(path string, size, modTime int64, sha1, mediaKey string) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	canonical := canonicalUploadPath(path)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().Unix()
+	query := `
+	INSERT INTO autosync_files (path, size, mod_time, sha1, media_key, synced_at)
+	VALUES (?, ?, ?, ?, ?, ?)
+	ON CONFLICT(path) DO UPDATE SET
+		size = excluded.size,
+		mod_time = excluded.mod_time,
+		sha1 = excluded.sha1,
+		media_key = excluded.media_key,
+		synced_at = excluded.synced_at
+	`
+	_, err := s.db.Exec(query, canonical, size, modTime, sha1, mediaKey, now)
+	return err
+}
+
+// GetAutoSyncSyncedCount returns the total count of synced files in SQLite.
+func (s *HistoryStore) GetAutoSyncSyncedCount() (int, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM autosync_files`).Scan(&count)
+	return count, err
 }

@@ -48,7 +48,7 @@ func runGUI() {
 			Handler: application.BundledAssetFileServer(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 	configManager.SetApp(wailsApp)
@@ -137,6 +137,8 @@ func runGUI() {
 	} else {
 		wailsApp.Logger.Error("failed to initialize AutoSyncManager", "error", err)
 	}
+
+	setupSystemTray(wailsApp, window, configManager)
 
 	err = wailsApp.Run()
 	if err != nil {

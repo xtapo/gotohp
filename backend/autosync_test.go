@@ -45,7 +45,10 @@ func TestAutoSyncManagerWatchAndDebounce(t *testing.T) {
 	}
 	SetActiveAutoSyncManager(mgr)
 	mgr.Start()
-	defer mgr.Stop()
+	defer func() {
+		mgr.Stop()
+		CloseGlobalHistoryStore()
+	}()
 
 	// Verify initial status
 	status := mgr.GetStatus()
@@ -143,5 +146,67 @@ func TestAutoSyncFolderAlbumConfig(t *testing.T) {
 	reloaded := cfgMgr.GetFolderAlbumKey(folder)
 	if reloaded != albumKey {
 		t.Errorf("expected reloaded album key %s, got %s", albumKey, reloaded)
+	}
+}
+
+func TestAutoSyncPersistenceAcrossRestarts(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "history.db")
+	store, err := NewHistoryStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create history store: %v", err)
+	}
+	defer store.Close()
+	SetHistoryStore(store)
+	defer SetHistoryStore(nil)
+
+	mgr1, err := NewAutoSyncManager(nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewAutoSyncManager failed: %v", err)
+	}
+
+	testPath := filepath.Clean("/media/photos/sample.jpg")
+	size := int64(2048)
+	modTime := int64(1750000000)
+
+	// In session 1, file is not synced initially
+	if mgr1.isSessionSynced(testPath, size, modTime) {
+		t.Errorf("expected file not to be synced in mgr1 initially")
+	}
+
+	// Record in SQLite
+	err = store.RecordAutoSyncFile(testPath, size, modTime, "dummy-sha1", "AF1QipMediaKey")
+	if err != nil {
+		t.Fatalf("RecordAutoSyncFile failed: %v", err)
+	}
+
+	// mgr1 should now detect it as synced (via SQLite fallback and populate RAM)
+	if !mgr1.isSessionSynced(testPath, size, modTime) {
+		t.Errorf("expected mgr1 to detect file as synced via SQLite")
+	}
+
+	// Simulate app restart: create a completely fresh manager with empty RAM cache
+	mgr2, err := NewAutoSyncManager(nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewAutoSyncManager (restart) failed: %v", err)
+	}
+
+	// Verify mgr2 loaded initial synced count from SQLite
+	status := mgr2.GetStatus()
+	if status.SyncedCount != 1 {
+		t.Errorf("expected SyncedCount to be 1 from SQLite on startup, got %d", status.SyncedCount)
+	}
+
+	// Verify mgr2 recognises the file as already synced WITHOUT re-running or touching remote
+	if !mgr2.isSessionSynced(testPath, size, modTime) {
+		t.Errorf("expected mgr2 to recognize file as synced across app restart")
+	}
+
+	// If file was modified on disk (size or modTime change), it must NOT be considered synced
+	if mgr2.isSessionSynced(testPath, size+100, modTime) {
+		t.Errorf("expected modified file size to NOT be considered synced")
+	}
+	if mgr2.isSessionSynced(testPath, size, modTime+60) {
+		t.Errorf("expected modified file timestamp to NOT be considered synced")
 	}
 }

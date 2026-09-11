@@ -41,9 +41,10 @@ type fileStat struct {
 // AutoSyncManager coordinates filesystem monitoring, file stability checking,
 // deduplication via Google Photos hash API, and silent background uploads.
 type AutoSyncManager struct {
-	configMgr *ConfigManager
-	notifier  AutoSyncNotifier
-	logger    *slog.Logger
+	configMgr    *ConfigManager
+	notifier     AutoSyncNotifier
+	logger       *slog.Logger
+	historyStore *HistoryStore
 
 	watcher   *fsnotify.Watcher
 	mu        sync.RWMutex
@@ -69,7 +70,7 @@ type AutoSyncManager struct {
 	activeFiles     map[string]bool // file path -> true
 	activeFileNames map[int]string  // workerID -> baseName
 
-	// In-memory session cache to avoid repeatedly hashing unchanged files
+	// In-memory session cache backed by SQLite historyStore
 	sessionMu     sync.RWMutex
 	sessionSynced map[string]fileStat // canonical path -> {size, modTime}
 
@@ -82,7 +83,7 @@ type AutoSyncManager struct {
 	currentFile  string
 }
 
-// NewAutoSyncManager creates a new AutoSyncManager instance without requiring a local database.
+// NewAutoSyncManager creates a new AutoSyncManager instance using the existing SQLite database for persistence.
 func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, logger *slog.Logger) (*AutoSyncManager, error) {
 	if configMgr == nil {
 		configMgr = &ConfigManager{}
@@ -99,10 +100,17 @@ func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, log
 		return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
 	}
 
+	historyStore := GetHistoryStore()
+	initialSynced := 0
+	if historyStore != nil {
+		initialSynced, _ = historyStore.GetAutoSyncSyncedCount()
+	}
+
 	mgr := &AutoSyncManager{
 		configMgr:       configMgr,
 		notifier:        notifier,
 		logger:          logger,
+		historyStore:    historyStore,
 		watcher:         watcher,
 		stopCh:          make(chan struct{}),
 		watchedDirs:     make(map[string]bool),
@@ -111,6 +119,7 @@ func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, log
 		activeFiles:     make(map[string]bool),
 		activeFileNames: make(map[int]string),
 		sessionSynced:   make(map[string]fileStat),
+		syncedCount:     initialSynced,
 	}
 
 	return mgr, nil
@@ -118,13 +127,25 @@ func NewAutoSyncManager(configMgr *ConfigManager, notifier AutoSyncNotifier, log
 
 func (m *AutoSyncManager) isSessionSynced(path string, size, modTime int64) bool {
 	canonical := canonicalUploadPath(path)
+
+	// 1. Ultra-fast check in RAM cache
 	m.sessionMu.RLock()
-	defer m.sessionMu.RUnlock()
 	stat, ok := m.sessionSynced[canonical]
-	if !ok {
-		return false
+	m.sessionMu.RUnlock()
+	if ok && stat.size == size && stat.modTime == modTime {
+		return true
 	}
-	return stat.size == size && stat.modTime == modTime
+
+	// 2. Check persistent SQLite database (history.db)
+	if m.historyStore != nil {
+		if synced, err := m.historyStore.IsAutoSyncFileSynced(canonical, size, modTime); err == nil && synced {
+			// Populate RAM cache so future checks for this file in this session hit RAM directly
+			m.markSessionSynced(canonical, size, modTime)
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *AutoSyncManager) markSessionSynced(path string, size, modTime int64) {
@@ -605,10 +626,18 @@ func (m *AutoSyncManager) uploadSingleWorkItem(item UploadWorkItem, api *Api, op
 		return
 	}
 
-	// Mark all paths in this work item as session synced
+	// Mark all paths in this work item as synced in RAM and in SQLite
 	for _, p := range allPaths {
 		if fi, err := os.Stat(p); err == nil {
-			m.markSessionSynced(p, fi.Size(), fi.ModTime().Unix())
+			canonical := canonicalUploadPath(p)
+			m.markSessionSynced(canonical, fi.Size(), fi.ModTime().Unix())
+			if m.historyStore != nil {
+				sha1Hex := ""
+				if sha1Bytes, err := CalculateSHA1(context.Background(), p); err == nil {
+					sha1Hex = fmt.Sprintf("%x", sha1Bytes)
+				}
+				_ = m.historyStore.RecordAutoSyncFile(canonical, fi.Size(), fi.ModTime().Unix(), sha1Hex, mediaKey)
+			}
 		}
 	}
 
