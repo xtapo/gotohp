@@ -29,18 +29,18 @@ type AccountConfig struct {
 // Preferences are GUI settings. The CLI never reads them; every CLI run is
 // configured by flags alone.
 type Preferences struct {
-	Proxy                         string   `json:"proxy" koanf:"proxy"`
-	UseQuota                      bool     `json:"useQuota" koanf:"use_quota"`
-	Saver                         bool     `json:"saver" koanf:"saver"`
-	Recursive                     bool     `json:"recursive" koanf:"recursive"`
-	ForceUpload                   bool     `json:"forceUpload" koanf:"force_upload"`
-	PairLivePhotos                bool     `json:"pairLivePhotos" koanf:"pair_live_photos"`
-	SkipIncompleteLivePhotos      bool     `json:"skipIncompleteLivePhotos" koanf:"skip_incomplete_live_photos"`
-	UpdateExistingPhotosToLive    bool     `json:"updateExistingPhotosToLive" koanf:"update_existing_photos_to_live"`
-	UploadThreads                 int      `json:"uploadThreads" koanf:"upload_threads"`
-	MaxUploadSpeedMBps            int      `json:"maxUploadSpeedMBps" koanf:"max_upload_speed_mbps"`
-	DeleteFromHost                bool     `json:"deleteFromHost" koanf:"delete_from_host"`
-	DisableUnsupportedFilesFilter bool     `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
+	Proxy                         string            `json:"proxy" koanf:"proxy"`
+	UseQuota                      bool              `json:"useQuota" koanf:"use_quota"`
+	Saver                         bool              `json:"saver" koanf:"saver"`
+	Recursive                     bool              `json:"recursive" koanf:"recursive"`
+	ForceUpload                   bool              `json:"forceUpload" koanf:"force_upload"`
+	PairLivePhotos                bool              `json:"pairLivePhotos" koanf:"pair_live_photos"`
+	SkipIncompleteLivePhotos      bool              `json:"skipIncompleteLivePhotos" koanf:"skip_incomplete_live_photos"`
+	UpdateExistingPhotosToLive    bool              `json:"updateExistingPhotosToLive" koanf:"update_existing_photos_to_live"`
+	UploadThreads                 int               `json:"uploadThreads" koanf:"upload_threads"`
+	MaxUploadSpeedMBps            int               `json:"maxUploadSpeedMBps" koanf:"max_upload_speed_mbps"`
+	DeleteFromHost                bool              `json:"deleteFromHost" koanf:"delete_from_host"`
+	DisableUnsupportedFilesFilter bool              `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
 	SetDateFromFilename           bool              `json:"setDateFromFilename" koanf:"set_date_from_filename"`
 	ExcludePattern                string            `json:"excludePattern" koanf:"exclude_pattern"`
 	AutoSyncEnabled               bool              `json:"autoSyncEnabled" koanf:"auto_sync_enabled"`
@@ -1065,4 +1065,44 @@ func migrateLegacyConfig(k *koanf.Koanf) Config {
 	}
 	AppConfig = previous
 	return c
+}
+
+// GetUploadHistory retrieves paginated upload sessions from the local database.
+func (g *ConfigManager) GetUploadHistory(limit, offset int) ([]UploadSessionSummary, error) {
+	return GetHistoryStore().GetSessions(limit, offset)
+}
+
+// GetSessionDetails returns the detailed information for a specific session.
+func (g *ConfigManager) GetSessionDetails(sessionID int64) (*UploadSessionDetails, error) {
+	return GetHistoryStore().GetSessionDetails(sessionID)
+}
+
+// GetFailedQueue returns active unresolved failed upload items.
+func (g *ConfigManager) GetFailedQueue() ([]FailedItemSummary, error) {
+	return GetHistoryStore().GetFailedQueue()
+}
+
+// DismissFailedItem marks a failed item as resolved in the queue.
+func (g *ConfigManager) DismissFailedItem(id int64) error {
+	return GetHistoryStore().DismissFailedItem(id)
+}
+
+// ClearFailedQueue clears all unresolved failed items from the queue.
+func (g *ConfigManager) ClearFailedQueue() error {
+	return GetHistoryStore().ClearFailedQueue()
+}
+
+// ClearUploadHistory removes all sessions and item records from the database.
+func (g *ConfigManager) ClearUploadHistory() error {
+	return GetHistoryStore().ClearHistory()
+}
+
+// GetFailedFilesForRetry returns existing on-disk paths for failed items in a specific session.
+func (g *ConfigManager) GetFailedFilesForRetry(sessionID int64) ([]string, error) {
+	return GetHistoryStore().GetFailedFilesForRetry(sessionID)
+}
+
+// GetAllFailedFilesForRetry returns existing on-disk paths for all unresolved failed items.
+func (g *ConfigManager) GetAllFailedFilesForRetry() ([]string, error) {
+	return GetHistoryStore().GetAllFailedFilesForRetry()
 }

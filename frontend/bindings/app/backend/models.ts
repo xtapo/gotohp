@@ -220,6 +220,54 @@ export class AutoSyncStatus {
     }
 }
 
+/**
+ * FailedItemSummary represents an active failed file in the queue.
+ */
+export class FailedItemSummary {
+    "id": number;
+    "sessionId": number;
+    "filePath": string;
+    "fileName": string;
+    "fileSize": number;
+    "errorMessage": string;
+    "createdAt": number;
+
+    /** Creates a new FailedItemSummary instance. */
+    constructor($$source: Partial<FailedItemSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = 0;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = "";
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("fileSize" in $$source)) {
+            this["fileSize"] = 0;
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FailedItemSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FailedItemSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FailedItemSummary($$parsedSource as Partial<FailedItemSummary>);
+    }
+}
+
 export class FileUploadResult {
     "MediaKey": string;
     "IsError": boolean;
@@ -413,10 +461,14 @@ export class Preferences {
      * Creates a new Preferences instance from a string or object.
      */
     static createFrom($$source: any = {}): Preferences {
-        const $$createField14_0 = $$createType2;
+        const $$createField16_0 = $$createType2;
+        const $$createField17_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("syncFolders" in $$parsedSource) {
-            $$parsedSource["syncFolders"] = $$createField14_0($$parsedSource["syncFolders"]);
+            $$parsedSource["syncFolders"] = $$createField16_0($$parsedSource["syncFolders"]);
+        }
+        if ("folderAlbums" in $$parsedSource) {
+            $$parsedSource["folderAlbums"] = $$createField17_0($$parsedSource["folderAlbums"]);
         }
         return new Preferences($$parsedSource as Partial<Preferences>);
     }
@@ -590,7 +642,187 @@ export class UploadBatchStart {
     }
 }
 
+/**
+ * UploadItemRecord represents a single file entry in an upload session.
+ */
+export class UploadItemRecord {
+    "id": number;
+    "sessionId": number;
+    "filePath": string;
+    "fileName": string;
+    "fileSize": number;
+
+    /**
+     * "success", "failed", "skipped"
+     */
+    "status": string;
+    "errorMessage": string;
+    "skipReason": string;
+    "mediaKey": string;
+    "resolved": boolean;
+    "createdAt": number;
+    "updatedAt": number;
+
+    /** Creates a new UploadItemRecord instance. */
+    constructor($$source: Partial<UploadItemRecord> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = 0;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = "";
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("fileSize" in $$source)) {
+            this["fileSize"] = 0;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = "";
+        }
+        if (!("skipReason" in $$source)) {
+            this["skipReason"] = "";
+        }
+        if (!("mediaKey" in $$source)) {
+            this["mediaKey"] = "";
+        }
+        if (!("resolved" in $$source)) {
+            this["resolved"] = false;
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = 0;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UploadItemRecord instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UploadItemRecord {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UploadItemRecord($$parsedSource as Partial<UploadItemRecord>);
+    }
+}
+
+/**
+ * UploadSessionDetails holds a session summary along with all its item records.
+ */
+export class UploadSessionDetails {
+    "session": UploadSessionSummary;
+    "items": UploadItemRecord[];
+
+    /** Creates a new UploadSessionDetails instance. */
+    constructor($$source: Partial<UploadSessionDetails> = {}) {
+        if (!("session" in $$source)) {
+            this["session"] = (new UploadSessionSummary());
+        }
+        if (!("items" in $$source)) {
+            this["items"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UploadSessionDetails instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UploadSessionDetails {
+        const $$createField0_0 = $$createType4;
+        const $$createField1_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("session" in $$parsedSource) {
+            $$parsedSource["session"] = $$createField0_0($$parsedSource["session"]);
+        }
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField1_0($$parsedSource["items"]);
+        }
+        return new UploadSessionDetails($$parsedSource as Partial<UploadSessionDetails>);
+    }
+}
+
+/**
+ * UploadSessionSummary represents the high-level summary of an upload session.
+ */
+export class UploadSessionSummary {
+    "id": number;
+
+    /**
+     * "manual", "retry", "autosync"
+     */
+    "source": string;
+    "albumName": string;
+    "totalFiles": number;
+    "successCount": number;
+    "failedCount": number;
+    "skippedCount": number;
+
+    /**
+     * "running", "completed", "cancelled", "failed"
+     */
+    "status": string;
+    "startedAt": number;
+    "endedAt": number;
+
+    /** Creates a new UploadSessionSummary instance. */
+    constructor($$source: Partial<UploadSessionSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("albumName" in $$source)) {
+            this["albumName"] = "";
+        }
+        if (!("totalFiles" in $$source)) {
+            this["totalFiles"] = 0;
+        }
+        if (!("successCount" in $$source)) {
+            this["successCount"] = 0;
+        }
+        if (!("failedCount" in $$source)) {
+            this["failedCount"] = 0;
+        }
+        if (!("skippedCount" in $$source)) {
+            this["skippedCount"] = 0;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            this["startedAt"] = 0;
+        }
+        if (!("endedAt" in $$source)) {
+            this["endedAt"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UploadSessionSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UploadSessionSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UploadSessionSummary($$parsedSource as Partial<UploadSessionSummary>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = AccountSummary.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = UploadSessionSummary.createFrom;
+const $$createType5 = UploadItemRecord.createFrom;
+const $$createType6 = $Create.Array($$createType5);

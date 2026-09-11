@@ -9,13 +9,14 @@ import {
 } from '@/components/ui/sheet'
 import { useColorMode } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { UserPlus } from '@lucide/vue'
+import { UserPlus, History, RefreshCw, AlertTriangle, ChevronDown, ChevronUp } from '@lucide/vue'
 import { ConfigManager, type AutoSyncStatus } from '../bindings/app/backend'
 import { Events } from '@wailsio/runtime'
 import Button from "./components/ui/button/Button.vue"
 import GoogleAccountSelect from './components/GoogleAccountSelect.vue'
 import GoogleAuthSetup from "./components/GoogleAuthSetup.vue"
 import AutoSyncModal from './components/AutoSyncModal.vue'
+import UploadHistoryModal from './components/UploadHistoryModal.vue'
 import './index.css'
 import SettingsPanel from "./SettingsPanel.vue"
 import Upload from './Upload.vue'
@@ -47,6 +48,31 @@ const isAccountSetupOpen = ref(false)
 const isSettingsOpen = ref(false)
 const removingAccount = ref('')
 const isAutoSyncOpen = ref(false)
+const isHistoryOpen = ref(false)
+const failedQueueCount = ref(0)
+const showFailedDetails = ref(false)
+
+async function refreshFailedQueueCount() {
+  try {
+    const queue = await ConfigManager.GetFailedQueue()
+    failedQueueCount.value = queue?.length || 0
+  } catch {
+    // ignore
+  }
+}
+
+function handleRetryFiles(files: string[]) {
+  if (files && files.length > 0) {
+    Events.Emit('startUpload', { files })
+  }
+}
+
+function retryCurrentFailedFiles() {
+  const paths = uploadState.results.failedItems?.map(f => f.path).filter(Boolean) || []
+  if (paths.length > 0) {
+    Events.Emit('startUpload', { files: paths })
+  }
+}
 
 function openAutoSyncFromSettings() {
   isSettingsOpen.value = false
@@ -170,6 +196,11 @@ onMounted(async () => {
     if (event?.data) {
       autoSyncStatus.value = event.data
     }
+  })
+
+  refreshFailedQueueCount()
+  Events.On('uploadHistoryUpdated', () => {
+    refreshFailedQueueCount()
   })
 })
 
@@ -494,6 +525,21 @@ onUnmounted(() => {
               <span>Auto-Sync</span>
             </Button>
 
+            <Button
+              variant="outline"
+              class="cursor-pointer select-none gap-1.5 relative"
+              @click="isHistoryOpen = true"
+            >
+              <History class="size-3.5 text-muted-foreground" />
+              <span>Lịch sử</span>
+              <span
+                v-if="failedQueueCount > 0"
+                class="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-destructive text-destructive-foreground"
+              >
+                {{ failedQueueCount }}
+              </span>
+            </Button>
+
             <Sheet v-model:open="isSettingsOpen">
               <SheetTrigger as-child>
                 <Button
@@ -517,22 +563,112 @@ onUnmounted(() => {
 
           <div
             v-if="uploadState.uploadedFiles > 0 || uploadState.results.fail.length > 0"
-            class="flex flex-col items-center gap-2 border rounded-lg p-5 mt-5"
+            class="flex flex-col items-center gap-2.5 border rounded-xl p-4 mt-4 w-full max-w-sm bg-card/60 backdrop-blur-sm"
           >
-            <h2 class="text-l font-semibold select-none ">
-              Upload Results
-            </h2>
-            <Label class="text-muted-foreground">Successful: {{ uploadState.results.success.length }}</Label>
-            <Label class="text-muted-foreground">Failed: {{ uploadState.results.fail.length }}</Label>
-            <Label class="text-muted-foreground">Skipped: {{ uploadState.results.skipped.length }}</Label>
-            <Label class="text-muted-foreground">Warnings: {{ uploadState.results.warnings.length }}</Label>
-            <Button
-              variant="outline"
-              class="cursor-pointer select-none min-w-[125px]"
-              @click="handleCopyClick"
+            <div class="flex items-center justify-between w-full">
+              <h2 class="text-sm font-semibold select-none">
+                Kết Quả Upload
+              </h2>
+              <span
+                v-if="uploadState.results.fail.length > 0"
+                class="text-xs text-destructive font-medium bg-destructive/10 px-2 py-0.5 rounded-full border border-destructive/20"
+              >
+                {{ uploadState.results.fail.length }} lỗi
+              </span>
+            </div>
+
+            <!-- Stats grid -->
+            <div class="grid grid-cols-2 gap-2 w-full text-xs">
+              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
+                <span class="text-muted-foreground">Thành công:</span>
+                <span class="font-semibold text-emerald-500">{{ uploadState.results.success.length }}</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
+                <span class="text-muted-foreground">Thất bại:</span>
+                <span class="font-semibold text-destructive">{{ uploadState.results.fail.length }}</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
+                <span class="text-muted-foreground">Bỏ qua:</span>
+                <span class="font-semibold text-amber-500">{{ uploadState.results.skipped.length }}</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded-lg bg-muted/40 border">
+                <span class="text-muted-foreground">Cảnh báo:</span>
+                <span class="font-semibold text-foreground">{{ uploadState.results.warnings.length }}</span>
+              </div>
+            </div>
+
+            <!-- 1-CLICK RETRY FAILED BUTTON WHEN FAILURES OCCUR -->
+            <div
+              v-if="uploadState.results.fail.length > 0"
+              class="w-full flex flex-col gap-2 pt-1 border-t border-border/40"
             >
-              {{ copyButtonText }}
-            </Button>
+              <Button
+                size="sm"
+                class="w-full cursor-pointer select-none bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs h-8 shadow-sm transition-colors"
+                @click="retryCurrentFailedFiles"
+              >
+                <RefreshCw class="size-3.5 mr-1.5" />
+                Thử lại tất cả file lỗi ({{ uploadState.results.fail.length }})
+              </Button>
+
+              <!-- Expand/collapse failed items details -->
+              <button
+                type="button"
+                class="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground pt-1 cursor-pointer select-none"
+                @click="showFailedDetails = !showFailedDetails"
+              >
+                <span class="flex items-center gap-1 text-destructive font-medium">
+                  <AlertTriangle class="size-3" />
+                  Chi tiết các file bị lỗi
+                </span>
+                <component
+                  :is="showFailedDetails ? ChevronUp : ChevronDown"
+                  class="size-3.5"
+                />
+              </button>
+
+              <!-- Failed items list -->
+              <div
+                v-if="showFailedDetails && uploadState.results.failedItems?.length"
+                class="max-h-40 overflow-y-auto space-y-1.5 pr-1 w-full"
+              >
+                <div
+                  v-for="(item, idx) in uploadState.results.failedItems"
+                  :key="idx"
+                  class="p-2 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive text-left"
+                >
+                  <p class="font-medium truncate text-foreground">
+                    {{ item.fileName }}
+                  </p>
+                  <p class="text-[11px] text-muted-foreground truncate font-mono mt-0.5">
+                    {{ item.path }}
+                  </p>
+                  <p class="text-[11px] font-normal mt-1 leading-tight text-destructive dark:text-red-400">
+                    Lý do: {{ item.error }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer action buttons -->
+            <div class="flex items-center gap-2 w-full pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                class="flex-1 cursor-pointer select-none text-xs h-8"
+                @click="handleCopyClick"
+              >
+                {{ copyButtonText }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="cursor-pointer select-none text-xs h-8 text-muted-foreground hover:text-foreground"
+                @click="isHistoryOpen = true"
+              >
+                Xem lịch sử
+              </Button>
+            </div>
           </div>
         </template>
       </template>
@@ -549,6 +685,10 @@ onUnmounted(() => {
     />
     <AutoSyncModal
       v-model:open="isAutoSyncOpen"
+    />
+    <UploadHistoryModal
+      v-model:open="isHistoryOpen"
+      @retry-files="handleRetryFiles"
     />
     <Toaster
       position="bottom-center"

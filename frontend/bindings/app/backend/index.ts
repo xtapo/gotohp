@@ -13,6 +13,7 @@ export {
     AlbumStatus,
     AutoSyncFileEvent,
     AutoSyncStatus,
+    FailedItemSummary,
     FileUploadResult,
     FilesDroppedEvent,
     Preferences,
@@ -20,5 +21,8 @@ export {
     PresetFolders,
     StartUploadEvent,
     ThreadStatus,
-    UploadBatchStart
+    UploadBatchStart,
+    UploadItemRecord,
+    UploadSessionDetails,
+    UploadSessionSummary
 } from "./models.js";

@@ -40,8 +40,29 @@ export function CancelInAppGoogleLogin(): $CancellablePromise<void> {
     return $Call.ByID(317231242);
 }
 
+/**
+ * ClearFailedQueue clears all unresolved failed items from the queue.
+ */
+export function ClearFailedQueue(): $CancellablePromise<void> {
+    return $Call.ByID(3249450437);
+}
+
+/**
+ * ClearUploadHistory removes all sessions and item records from the database.
+ */
+export function ClearUploadHistory(): $CancellablePromise<void> {
+    return $Call.ByID(4150821354);
+}
+
 export function CredentialNeedsTokenBinding(authString: string): $CancellablePromise<boolean> {
     return $Call.ByID(920629710, authString);
+}
+
+/**
+ * DismissFailedItem marks a failed item as resolved in the queue.
+ */
+export function DismissFailedItem(id: number): $CancellablePromise<void> {
+    return $Call.ByID(2854156036, id);
 }
 
 export function GetAccounts(): $CancellablePromise<$models.AccountsState> {
@@ -58,9 +79,18 @@ export function GetAlbumName(): $CancellablePromise<string> {
     return $Call.ByID(3590690922);
 }
 
+/**
+ * GetAllFailedFilesForRetry returns existing on-disk paths for all unresolved failed items.
+ */
+export function GetAllFailedFilesForRetry(): $CancellablePromise<string[]> {
+    return $Call.ByID(2198270848).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetAutoSyncStatus(): $CancellablePromise<$models.AutoSyncStatus> {
     return $Call.ByID(4136090252).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
@@ -68,21 +98,61 @@ export function GetExcludePattern(): $CancellablePromise<string> {
     return $Call.ByID(2942848526);
 }
 
+/**
+ * GetFailedFilesForRetry returns existing on-disk paths for failed items in a specific session.
+ */
+export function GetFailedFilesForRetry(sessionID: number): $CancellablePromise<string[]> {
+    return $Call.ByID(776929141, sessionID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * GetFailedQueue returns active unresolved failed upload items.
+ */
+export function GetFailedQueue(): $CancellablePromise<$models.FailedItemSummary[]> {
+    return $Call.ByID(228255922).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
+export function GetFolderAlbumKey(folder: string): $CancellablePromise<string> {
+    return $Call.ByID(3651401376, folder);
+}
+
 export function GetPresetFolders(): $CancellablePromise<$models.PresetFolders> {
     return $Call.ByID(3658713694).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType5($result);
+    });
+}
+
+/**
+ * GetSessionDetails returns the detailed information for a specific session.
+ */
+export function GetSessionDetails(sessionID: number): $CancellablePromise<$models.UploadSessionDetails | null> {
+    return $Call.ByID(3397228188, sessionID).then(($result: any) => {
+        return $$createType7($result);
     });
 }
 
 export function GetSettings(): $CancellablePromise<$models.Preferences> {
     return $Call.ByID(4262641511).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType8($result);
     });
 }
 
 export function GetSyncFolders(): $CancellablePromise<string[]> {
     return $Call.ByID(4187658046).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType1($result);
+    });
+}
+
+/**
+ * GetUploadHistory retrieves paginated upload sessions from the local database.
+ */
+export function GetUploadHistory(limit: number, offset: number): $CancellablePromise<$models.UploadSessionSummary[]> {
+    return $Call.ByID(3979600553, limit, offset).then(($result: any) => {
+        return $$createType10($result);
     });
 }
 
@@ -116,12 +186,12 @@ export function SetApp(app: application$0.App | null): $CancellablePromise<void>
     return $Call.ByID(471517813, app);
 }
 
-export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(203272859, enabled);
+export function SetAutoAlbumEnabled(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1240202985, enabled);
 }
 
-export function SetAutoAlbumEnabled(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByName("app/backend.ConfigManager.SetAutoAlbumEnabled", enabled);
+export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(203272859, enabled);
 }
 
 export function SetDeleteFromHost(deleteFromHost: boolean): $CancellablePromise<void> {
@@ -136,8 +206,16 @@ export function SetExcludePattern(pattern: string): $CancellablePromise<void> {
     return $Call.ByID(4021766002, pattern);
 }
 
+export function SetFolderAlbumKey(folder: string, albumKey: string): $CancellablePromise<void> {
+    return $Call.ByID(1023619460, folder, albumKey);
+}
+
 export function SetForceUpload(forceUpload: boolean): $CancellablePromise<void> {
     return $Call.ByID(2189240988, forceUpload);
+}
+
+export function SetMaxUploadSpeedMBps(speed: number): $CancellablePromise<void> {
+    return $Call.ByID(3029183470, speed);
 }
 
 export function SetPairLivePhotos(pairLivePhotos: boolean): $CancellablePromise<void> {
@@ -180,10 +258,6 @@ export function SetUploadThreads(uploadThreads: number): $CancellablePromise<voi
     return $Call.ByID(1692245880, uploadThreads);
 }
 
-export function SetMaxUploadSpeedMBps(speed: number): $CancellablePromise<void> {
-    return $Call.ByName("app/backend.ConfigManager.SetMaxUploadSpeedMBps", speed);
-}
-
 export function SetUseQuota(useQuota: boolean): $CancellablePromise<void> {
     return $Call.ByID(778544527, useQuota);
 }
@@ -203,7 +277,13 @@ export function TriggerSyncNow(): $CancellablePromise<void> {
 
 // Private type creation functions
 const $$createType0 = $models.AccountsState.createFrom;
-const $$createType1 = $models.AutoSyncStatus.createFrom;
-const $$createType2 = $models.PresetFolders.createFrom;
-const $$createType3 = $models.Preferences.createFrom;
-const $$createType4 = $Create.Array($Create.Any);
+const $$createType1 = $Create.Array($Create.Any);
+const $$createType2 = $models.AutoSyncStatus.createFrom;
+const $$createType3 = $models.FailedItemSummary.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $models.PresetFolders.createFrom;
+const $$createType6 = $models.UploadSessionDetails.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $models.Preferences.createFrom;
+const $$createType9 = $models.UploadSessionSummary.createFrom;
+const $$createType10 = $Create.Array($$createType9);

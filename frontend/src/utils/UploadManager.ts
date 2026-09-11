@@ -91,6 +91,7 @@ class UploadManager {
     results: {
       success: [],
       fail: [],
+      failedItems: [],
       skipped: [],
       warnings: [],
     },
@@ -306,6 +307,7 @@ class UploadManager {
   public resetUploadResults() {
     this.state.results.success = [];
     this.state.results.fail = [];
+    this.state.results.failedItems = [];
     this.state.results.skipped = [];
     this.state.results.warnings = [];
   }

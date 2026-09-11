@@ -71,6 +71,7 @@ func runGUI() {
 	})
 
 	uploadManager := backend.NewUploadManager(backend.NewWailsReporter(wailsApp), wailsApp.Logger)
+	uploadManager.SetHistoryStore(backend.GetHistoryStore())
 
 	// Listen for upload cancel event
 	wailsApp.Event.On("uploadCancel", func(e *application.CustomEvent) {

@@ -34,8 +34,22 @@ type UploadManager struct {
 	logger            *slog.Logger
 	controller        *UploadController
 	initialLimitBytes int64
+	historyStore      *HistoryStore
 	// apiOptions is captured from the options of the run in progress.
 	apiOptions ApiOptions
+}
+
+// SetHistoryStore assigns a custom HistoryStore to the manager.
+func (m *UploadManager) SetHistoryStore(store *HistoryStore) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.historyStore = store
+}
+
+func (m *UploadManager) getHistoryStore() *HistoryStore {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.historyStore
 }
 
 // NewUploadManager creates a manager that reports progress to reporter. A nil
@@ -165,6 +179,7 @@ type ThreadStatus struct {
 }
 
 // Upload starts an upload run in the background. Progress is delivered through
+// Upload starts an upload run in the background. Progress is delivered through
 // the manager's UploadReporter; UploadStop marks the end of the run.
 func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	opts = opts.normalized()
@@ -185,6 +200,12 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	m.controller = NewUploadController(limitBytes)
 	m.mu.Unlock()
 
+	history := m.getHistoryStore()
+	var sessionID int64
+	if history != nil {
+		sessionID, _ = history.CreateSession("manual", opts.AlbumName, len(paths))
+	}
+
 	// Make preflight visible immediately so a long directory or metadata scan can
 	// be cancelled from the UI.
 	m.reporter.UploadStart(UploadBatchStart{})
@@ -192,8 +213,21 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	targetPaths, err := filterGooglePhotosFilesWithCancel(paths, opts, m.isCancelled)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			if history != nil && sessionID > 0 {
+				_ = history.FinishSession(sessionID, "cancelled", 0, 0, 0)
+			}
 			m.finish()
 			return
+		}
+		if history != nil && sessionID > 0 {
+			for _, p := range paths {
+				_ = history.RecordItem(sessionID, UploadItemRecord{
+					FilePath:     p,
+					Status:       "failed",
+					ErrorMessage: err.Error(),
+				})
+			}
+			_ = history.FinishSession(sessionID, "failed", 0, len(paths), 0)
 		}
 		m.reporter.FileResult(FileUploadResult{
 			IsError:      true,
@@ -210,12 +244,18 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 		Cancelled:           m.isCancelled,
 	}, nil)
 	if m.isCancelled() {
+		if history != nil && sessionID > 0 {
+			_ = history.FinishSession(sessionID, "cancelled", 0, 0, 0)
+		}
 		m.finish()
 		return
 	}
-	m.reportPreflight(len(workItems), preflightWarnings)
+	preflightSkipped := m.reportPreflight(len(workItems), preflightWarnings, sessionID)
 
 	if len(workItems) == 0 {
+		if history != nil && sessionID > 0 {
+			_ = history.FinishSession(sessionID, "completed", 0, 0, preflightSkipped)
+		}
 		m.finish()
 		return
 	}
@@ -223,12 +263,22 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	if _, err := NewApi(opts.Api); err != nil {
 		for _, item := range workItems {
 			path := uploadWorkPrimaryPath(item)
+			if history != nil && sessionID > 0 && path != "" {
+				_ = history.RecordItem(sessionID, UploadItemRecord{
+					FilePath:     path,
+					Status:       "failed",
+					ErrorMessage: err.Error(),
+				})
+			}
 			m.reporter.FileResult(FileUploadResult{
 				IsError:      true,
 				Error:        err,
 				ErrorMessage: err.Error(),
 				Path:         path,
 			})
+		}
+		if history != nil && sessionID > 0 {
+			_ = history.FinishSession(sessionID, "failed", 0, len(workItems), preflightSkipped)
 		}
 		m.finish()
 		return
@@ -277,6 +327,7 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 	go func() {
 		// Collect successful uploads with path -> mediaKey mapping for AUTO mode
 		successfulUploads := make(map[string]string) // path -> mediaKey
+		var failedCount, workerSkippedCount int
 
 		// Wait for all workers to finish in a separate goroutine, then close results
 		go func() {
@@ -288,11 +339,36 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 		for result := range results {
 			m.reporter.FileResult(result)
 			if result.IsError {
+				failedCount++
 				m.logger.Error("upload error", "path", result.Path, "error", result.Error)
+				if history != nil && sessionID > 0 {
+					_ = history.RecordItem(sessionID, UploadItemRecord{
+						FilePath:     result.Path,
+						Status:       "failed",
+						ErrorMessage: result.ErrorMessage,
+					})
+				}
+			} else if result.Skipped {
+				workerSkippedCount++
+				m.logger.Info("upload skipped", "path", result.Path, "reason", result.SkipReason)
+				if history != nil && sessionID > 0 {
+					_ = history.RecordItem(sessionID, UploadItemRecord{
+						FilePath:   result.Path,
+						Status:     "skipped",
+						SkipReason: result.SkipReason,
+					})
+				}
 			} else {
 				m.logger.Info("upload success", "path", result.Path)
 				if result.MediaKey != "" {
 					successfulUploads[result.Path] = result.MediaKey
+				}
+				if history != nil && sessionID > 0 {
+					_ = history.RecordItem(sessionID, UploadItemRecord{
+						FilePath: result.Path,
+						Status:   "success",
+						MediaKey: result.MediaKey,
+					})
 				}
 			}
 		}
@@ -302,6 +378,16 @@ func (m *UploadManager) Upload(paths []string, opts UploadOptions) {
 
 		if len(successfulUploads) > 0 {
 			m.handleAlbumCreation(successfulUploads, opts.AlbumName, opts.AlbumAutoMode)
+		}
+
+		finalStatus := "completed"
+		if m.isCancelled() {
+			finalStatus = "cancelled"
+		} else if failedCount > 0 && len(successfulUploads) == 0 {
+			finalStatus = "failed"
+		}
+		if history != nil && sessionID > 0 {
+			_ = history.FinishSession(sessionID, finalStatus, len(successfulUploads), failedCount, preflightSkipped+workerSkippedCount)
 		}
 
 		m.finish()
@@ -317,8 +403,9 @@ func (m *UploadManager) finish() {
 	m.mu.Unlock()
 }
 
-func (m *UploadManager) reportPreflight(uploadItemCount int, warnings []PreflightWarning) {
+func (m *UploadManager) reportPreflight(uploadItemCount int, warnings []PreflightWarning, sessionID int64) int {
 	skippedCount := 0
+	history := m.getHistoryStore()
 	for _, warning := range warnings {
 		if isSkippedPreflightWarning(warning.Code) {
 			skippedCount++
@@ -340,6 +427,13 @@ func (m *UploadManager) reportPreflight(uploadItemCount int, warnings []Prefligh
 		if len(warning.Paths) > 0 {
 			primaryPath = warning.Paths[0]
 		}
+		if history != nil && sessionID > 0 && primaryPath != "" {
+			_ = history.RecordItem(sessionID, UploadItemRecord{
+				FilePath:   primaryPath,
+				Status:     "skipped",
+				SkipReason: warning.Message,
+			})
+		}
 		m.reporter.FileResult(FileUploadResult{
 			IsLivePhoto: true,
 			Skipped:     true,
@@ -349,6 +443,7 @@ func (m *UploadManager) reportPreflight(uploadItemCount int, warnings []Prefligh
 			Paths:       warning.Paths,
 		})
 	}
+	return skippedCount
 }
 
 func isSkippedPreflightWarning(code string) bool {

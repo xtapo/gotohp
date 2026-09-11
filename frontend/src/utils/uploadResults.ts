@@ -9,9 +9,16 @@ export interface SkippedUploadResult {
   reason: string
 }
 
+export interface FailedUploadItem {
+  path: string
+  fileName: string
+  error: string
+}
+
 export interface UploadResults {
   success: UploadSuccess[]
   fail: string[]
+  failedItems: FailedUploadItem[]
   skipped: SkippedUploadResult[]
   warnings: SkippedUploadResult[]
 }
@@ -28,8 +35,19 @@ export interface UploadResultEvent {
 }
 
 export function recordUploadResult(results: UploadResults, event: UploadResultEvent): number {
+  if (!results.failedItems) {
+    results.failedItems = []
+  }
+
   if (event.IsError) {
+    const errorMsg = event.ErrorMessage || 'Unknown upload error'
     results.fail.push(event.ErrorMessage ? `${event.Path}: ${event.ErrorMessage}` : event.Path)
+    const fileName = event.Path ? event.Path.split(/[\\/]/).pop() || event.Path : 'Unknown file'
+    results.failedItems.push({
+      path: event.Path,
+      fileName,
+      error: errorMsg,
+    })
     return 1
   }
 

@@ -23,8 +23,8 @@ declare module "@wailsio/runtime" {
             "startUpload": backend$0.StartUploadEvent;
             "uploadCancel": void;
             "uploadPause": void;
-            "uploadResume": void;
             "uploadPaused": void;
+            "uploadResume": void;
             "uploadResumed": void;
             "uploadSetBandwidthLimit": number;
             "uploadStart": backend$0.UploadBatchStart;
