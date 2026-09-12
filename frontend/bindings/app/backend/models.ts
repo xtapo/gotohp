@@ -382,6 +382,15 @@ export class Preferences {
     "folderAlbums": { [_ in string]?: string };
     "syncOnStartup": boolean;
     "startWithWindows": boolean;
+    "filterIncludePhotos": boolean;
+    "filterIncludeVideos": boolean;
+    "filterIncludeRaw": boolean;
+    "filterIncludeHeic": boolean;
+    "filterIncludeGif": boolean;
+    "minFileSizeKB": number;
+    "maxVideoSizeMB": number;
+    "postUploadAction": string;
+    "backupFolder": string;
 
     /**
      * AlbumName and AlbumAutoMode are per-session choices and are never persisted.
@@ -450,6 +459,33 @@ export class Preferences {
         }
         if (!("startWithWindows" in $$source)) {
             this["startWithWindows"] = false;
+        }
+        if (!("filterIncludePhotos" in $$source)) {
+            this["filterIncludePhotos"] = false;
+        }
+        if (!("filterIncludeVideos" in $$source)) {
+            this["filterIncludeVideos"] = false;
+        }
+        if (!("filterIncludeRaw" in $$source)) {
+            this["filterIncludeRaw"] = false;
+        }
+        if (!("filterIncludeHeic" in $$source)) {
+            this["filterIncludeHeic"] = false;
+        }
+        if (!("filterIncludeGif" in $$source)) {
+            this["filterIncludeGif"] = false;
+        }
+        if (!("minFileSizeKB" in $$source)) {
+            this["minFileSizeKB"] = 0;
+        }
+        if (!("maxVideoSizeMB" in $$source)) {
+            this["maxVideoSizeMB"] = 0;
+        }
+        if (!("postUploadAction" in $$source)) {
+            this["postUploadAction"] = "";
+        }
+        if (!("backupFolder" in $$source)) {
+            this["backupFolder"] = "";
         }
         if (!("albumName" in $$source)) {
             this["albumName"] = "";

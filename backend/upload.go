@@ -606,6 +606,7 @@ func FilterGooglePhotosFiles(paths []string, opts UploadOptions) ([]string, erro
 }
 
 func filterGooglePhotosFilesWithCancel(paths []string, opts UploadOptions, cancelled func() bool) ([]string, error) {
+	opts = opts.normalized()
 	var supportedFiles []string
 	type seenUploadFile struct {
 		canonicalPath string
@@ -613,7 +614,14 @@ func filterGooglePhotosFilesWithCancel(paths []string, opts UploadOptions, cance
 	}
 	seenFiles := make(map[string][]seenUploadFile)
 	appendFile := func(path string, info os.FileInfo) {
-		if !opts.DisableUnsupportedFilesFilter && !isSupportedByGooglePhotos(path) {
+		if info == nil {
+			info, _ = os.Stat(path)
+		}
+		var fileSize int64
+		if info != nil {
+			fileSize = info.Size()
+		}
+		if match, _ := MatchesUploadFilters(path, fileSize, opts); !match {
 			return
 		}
 		canonicalPath := canonicalUploadPath(path)
@@ -747,10 +755,8 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 				FileName: fileName,
 				Message:  "Already in library",
 			})
-			if opts.DeleteFromHost {
-				if err := os.Remove(filePath); err != nil {
-					return mediakey, true, fmt.Errorf("file exists in library but failed to delete local copy: %w", err)
-				}
+			if err := ExecutePostUploadAction(filePath, opts); err != nil {
+				return mediakey, true, fmt.Errorf("file exists in library but post-upload cleanup failed: %w", err)
 			}
 			return mediakey, true, nil
 		}
@@ -823,10 +829,8 @@ func uploadSingleFile(ctx context.Context, api *Api, filePath string, opts Uploa
 		return "", false, fmt.Errorf("media key not received")
 	}
 
-	if opts.DeleteFromHost {
-		if err := os.Remove(filePath); err != nil {
-			return mediaKey, false, fmt.Errorf("uploaded successfully but failed to delete file: %w", err)
-		}
+	if err := ExecutePostUploadAction(filePath, opts); err != nil {
+		return mediaKey, false, fmt.Errorf("uploaded successfully but post-upload cleanup failed: %w", err)
 	}
 
 	return mediaKey, false, nil
@@ -972,6 +976,8 @@ func uploadWorkItem(ctx context.Context, api *Api, item UploadWorkItem, opts Upl
 			DeleteFromHost:             opts.DeleteFromHost,
 			SetDateFromFilename:        opts.SetDateFromFilename,
 			UpdateExistingPhotosToLive: opts.UpdateExistingPhotosToLive,
+			PostUploadAction:           opts.PostUploadAction,
+			BackupFolder:               opts.BackupFolder,
 		}, workerID, reporter)
 	default:
 		return "", false, fmt.Errorf("unsupported upload work kind %q", item.Kind)

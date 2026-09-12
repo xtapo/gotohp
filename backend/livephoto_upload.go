@@ -21,6 +21,8 @@ type LivePhotoUploadOptions struct {
 	DeleteFromHost             bool
 	SetDateFromFilename        bool
 	UpdateExistingPhotosToLive bool
+	PostUploadAction           string
+	BackupFolder               string
 }
 
 func uploadLivePhotoWithCallback(
@@ -156,10 +158,8 @@ func uploadLivePhotoWithCallback(
 		return "", false, fmt.Errorf("Live Photo media key not received")
 	}
 
-	if options.DeleteFromHost {
-		if err := removeLivePhotoFiles(pair); err != nil {
-			return mediaKey, false, err
-		}
+	if err := executePostUploadLivePhotoFromOptions(pair, options); err != nil {
+		return mediaKey, false, err
 	}
 	return mediaKey, false, nil
 }
@@ -231,10 +231,8 @@ func reconcileExistingLivePhoto(
 	if mediaKey == "" {
 		return "", fmt.Errorf("updated Live Photo media key not received")
 	}
-	if options.DeleteFromHost {
-		if err := removeLivePhotoFiles(pair); err != nil {
-			return mediaKey, err
-		}
+	if err := executePostUploadLivePhotoFromOptions(pair, options); err != nil {
+		return mediaKey, err
 	}
 	return mediaKey, nil
 }
@@ -274,6 +272,15 @@ func uploadLivePhotoComponent(
 	}
 	return api.UploadFileWithProgress(ctx, componentPath, uploadSession, progress)
 }
+func executePostUploadLivePhotoFromOptions(pair LivePhotoPair, options LivePhotoUploadOptions) error {
+	opts := UploadOptions{
+		DeleteFromHost:   options.DeleteFromHost,
+		PostUploadAction: options.PostUploadAction,
+		BackupFolder:     options.BackupFolder,
+	}
+	return ExecutePostUploadLivePhoto(pair, opts)
+}
+
 func removeLivePhotoFiles(pair LivePhotoPair) error {
 	for _, path := range []string{pair.VideoPath, pair.PhotoPath} {
 		if err := os.Remove(path); err != nil {

@@ -74,7 +74,7 @@ func runGUI() {
 		Title:               title,
 		Frameless:           false,
 		Width:               400,
-		Height:              600,
+		Height:              640,
 		EnableFileDrop:      true,
 		DisableResize:       true,
 		MaximiseButtonState: application.ButtonDisabled,

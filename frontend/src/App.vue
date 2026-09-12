@@ -24,6 +24,10 @@ import {
   ExternalLink,
   Copy,
   Check,
+  HardDrive,
+  Trash2,
+  Archive,
+  X,
 } from '@lucide/vue'
 import { ConfigManager, type AutoSyncStatus } from '../bindings/app/backend'
 import { Events, Browser, Clipboard } from '@wailsio/runtime'
@@ -66,6 +70,48 @@ const isAutoSyncOpen = ref(false)
 const isHistoryOpen = ref(false)
 const failedQueueCount = ref(0)
 const showFailedDetails = ref(false)
+
+const isFreeUpSpaceOpen = ref(false)
+const freeUpSpaceAction = ref<'recycle' | 'backup'>('recycle')
+const isFreeingUpSpace = ref(false)
+
+async function handleFreeUpSpace() {
+  const filePaths = uploadState.results.success.map(s => s.path).filter(Boolean)
+  if (filePaths.length === 0) return
+  isFreeingUpSpace.value = true
+  try {
+    const count = await ConfigManager.FreeUpSpace(filePaths, freeUpSpaceAction.value, '')
+    toast.success(`Đã giải phóng thành công ${count} tệp!`, {
+      description: freeUpSpaceAction.value === 'recycle'
+        ? 'Các tệp đã được chuyển vào Thùng rác Windows an toàn.'
+        : 'Các tệp đã được di chuyển vào thư mục lưu trữ _BackedUp/.'
+    })
+    isFreeUpSpaceOpen.value = false
+  } catch (error) {
+    console.error('Failed to free up space:', error)
+    toast.error('Giải phóng dung lượng thất bại', {
+      description: error instanceof Error ? error.message : String(error)
+    })
+  } finally {
+    isFreeingUpSpace.value = false
+  }
+}
+
+const isResultsDismissed = ref(false)
+
+const showRecentResultsCard = computed(() => {
+  return (uploadState.uploadedFiles > 0 || uploadState.results.fail.length > 0) && !isResultsDismissed.value
+})
+
+function dismissResultsCard() {
+  isResultsDismissed.value = true
+}
+
+watch(() => uploadState.isUploading, (uploading) => {
+  if (uploading) {
+    isResultsDismissed.value = false
+  }
+})
 
 async function refreshFailedQueueCount() {
   try {
@@ -478,7 +524,7 @@ onUnmounted(() => {
     <!-- MAIN INTERFACE CONTAINER (When not uploading) -->
     <div
       v-else-if="!uploadState.isUploading"
-      class="w-full h-full flex flex-col justify-between p-4 max-w-[420px] mx-auto select-none"
+      class="w-full h-full flex flex-col justify-between p-3 max-w-[420px] mx-auto select-none overflow-y-auto overflow-x-hidden gap-2"
       data-file-drop-target
     >
       <!-- STATE 1: NO GOOGLE ACCOUNT CONNECTED -->
@@ -655,8 +701,8 @@ onUnmounted(() => {
 
           <!-- RECENT UPLOAD RESULTS SUMMARY CARD (When finished previous uploads) -->
           <div
-            v-if="uploadState.uploadedFiles > 0 || uploadState.results.fail.length > 0"
-            class="my-2.5 w-full rounded-2xl border border-white/10 bg-zinc-900/70 backdrop-blur-xl p-3.5 flex flex-col gap-2.5 shadow-xl"
+            v-if="showRecentResultsCard"
+            class="my-1.5 w-full rounded-2xl border border-white/10 bg-zinc-900/80 backdrop-blur-xl p-3 flex flex-col gap-2 shadow-xl shrink-0"
             style="--wails-draggable: none"
           >
             <div class="flex items-center justify-between w-full">
@@ -666,12 +712,22 @@ onUnmounted(() => {
                   Kết Quả Tải Lên Gần Đây
                 </h3>
               </div>
-              <span
-                v-if="uploadState.results.fail.length > 0"
-                class="text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20"
-              >
-                {{ uploadState.results.fail.length }} lỗi
-              </span>
+              <div class="flex items-center gap-1.5">
+                <span
+                  v-if="uploadState.results.fail.length > 0"
+                  class="text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20"
+                >
+                  {{ uploadState.results.fail.length }} lỗi
+                </span>
+                <button
+                  type="button"
+                  class="size-5 rounded-full hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                  title="Đóng thông báo này"
+                  @click="dismissResultsCard"
+                >
+                  <X class="size-3.5" />
+                </button>
+              </div>
             </div>
 
             <!-- Stats grid -->
@@ -783,6 +839,17 @@ onUnmounted(() => {
                   }}
                 </span>
               </div>
+
+              <!-- Free Up Space 1-Click Action -->
+              <Button
+                size="sm"
+                variant="outline"
+                class="w-full cursor-pointer select-none text-xs h-8 rounded-lg border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-medium flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                @click="isFreeUpSpaceOpen = true"
+              >
+                <HardDrive class="size-3.5 text-emerald-400" />
+                <span>Giải phóng bộ nhớ ({{ uploadState.results.success.length }} tệp đã sao lưu)</span>
+              </Button>
             </div>
 
             <!-- Action buttons -->
@@ -790,37 +857,47 @@ onUnmounted(() => {
               <Button
                 variant="outline"
                 size="sm"
-                class="flex-1 cursor-pointer select-none text-[11px] h-7 rounded-lg border-white/10"
+                class="w-full cursor-pointer select-none text-[11px] h-7 rounded-lg border-white/10"
                 @click="handleCopyClick"
               >
                 {{ copyButtonText }}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="cursor-pointer select-none text-[11px] h-7 text-zinc-400 hover:text-zinc-200"
-                @click="isHistoryOpen = true"
-              >
-                Lịch sử
-              </Button>
             </div>
           </div>
 
-          <!-- HERO DROP TARGET CARD (The Centerpiece of gotohp) -->
+          <!-- COMPACT DROP ZONE (When recent results card is displayed) -->
           <div
+            v-if="showRecentResultsCard"
             data-file-drop-target
             data-drop-zone="regular"
-            class="group relative flex-1 my-3 w-full rounded-2xl border border-dashed border-white/15 hover:border-emerald-500/50 bg-gradient-to-b from-white/[0.04] to-transparent hover:from-emerald-500/[0.03] backdrop-blur-md p-6 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-xl drop-zone cursor-default"
+            class="group relative flex-1 min-h-[56px] w-full py-2 px-3 rounded-xl border border-dashed border-white/15 hover:border-emerald-500/50 bg-white/[0.02] hover:bg-emerald-500/[0.04] transition-all duration-200 flex flex-col items-center justify-center gap-0.5 text-center cursor-default shadow-sm"
+            style="--wails-draggable: none"
+          >
+            <div class="flex items-center gap-1.5">
+              <div class="size-5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <UploadCloud class="size-3" />
+              </div>
+              <span class="text-[11px] text-zinc-200 font-medium">Kéo thả thêm tệp vào đây</span>
+            </div>
+            <span class="text-[10px] text-zinc-500">Thả ảnh hoặc video để tải tiếp</span>
+          </div>
+
+          <!-- HERO DROP TARGET CARD (When no recent results) -->
+          <div
+            v-else
+            data-file-drop-target
+            data-drop-zone="regular"
+            class="group relative flex-1 my-2 w-full rounded-2xl border border-dashed border-white/15 hover:border-emerald-500/50 bg-gradient-to-b from-white/[0.04] to-transparent hover:from-emerald-500/[0.03] backdrop-blur-md p-5 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-xl drop-zone cursor-default"
             style="--wails-draggable: none"
           >
             <!-- Ambient hover halo -->
             <div class="absolute inset-0 rounded-2xl bg-radial from-emerald-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
             <!-- Elevated Icon with Glow -->
-            <div class="relative mb-3.5">
+            <div class="relative mb-3">
               <div class="absolute -inset-1 rounded-2xl bg-emerald-500/20 blur-md group-hover:bg-emerald-500/35 transition-all duration-300" />
-              <div class="relative size-14 rounded-2xl bg-gradient-to-b from-zinc-800 to-zinc-900 border border-white/15 shadow-xl flex items-center justify-center text-emerald-400 group-hover:scale-105 group-hover:text-emerald-300 transition-all duration-300">
-                <UploadCloud class="size-7 stroke-[1.75]" />
+              <div class="relative size-13 rounded-2xl bg-gradient-to-b from-zinc-800 to-zinc-900 border border-white/15 shadow-xl flex items-center justify-center text-emerald-400 group-hover:scale-105 group-hover:text-emerald-300 transition-all duration-300">
+                <UploadCloud class="size-6.5 stroke-[1.75]" />
               </div>
             </div>
 
@@ -833,7 +910,7 @@ onUnmounted(() => {
             </p>
 
             <!-- Supported Format Chips -->
-            <div class="mt-4 flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-zinc-400 select-none">
+            <div class="mt-3.5 flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-zinc-400 select-none">
               <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">JPG</span>
               <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">PNG</span>
               <span class="px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] font-mono">MP4</span>
@@ -842,7 +919,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Smart Drop Modes Tip -->
-            <div class="mt-3.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+            <div class="mt-3 flex items-center gap-1.5 text-[11px] text-zinc-400">
               <Sparkles class="size-3 text-amber-400/80" />
               <span>Kéo tệp vào cửa sổ để chọn 3 chế độ tải</span>
             </div>
@@ -912,6 +989,91 @@ onUnmounted(() => {
       v-model:open="isHistoryOpen"
       @retry-files="handleRetryFiles"
     />
+
+    <!-- FREE UP SPACE MODAL DIALOG -->
+    <div
+      v-if="isFreeUpSpaceOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+    >
+      <div
+        class="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-900 p-5 shadow-2xl flex flex-col gap-4 text-center animate-in fade-in zoom-in-95 duration-200"
+        style="--wails-draggable: none"
+      >
+        <div class="size-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+          <HardDrive class="size-6" />
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-100">
+            Giải Phóng Dung Lượng Máy Tính
+          </h3>
+          <p class="text-xs text-zinc-400 mt-1 leading-relaxed">
+            Google Photos đã xác nhận <b class="text-zinc-200">{{ uploadState.results.success.length }} tệp</b> tải lên thành công. Bạn có thể giải phóng dung lượng trên ổ đĩa:
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-2 text-left">
+          <div
+            class="flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all"
+            :class="freeUpSpaceAction === 'recycle' ? 'bg-emerald-500/10 border-emerald-500/30 shadow-sm' : 'bg-white/[0.02] border-white/5 hover:border-white/10'"
+            @click="freeUpSpaceAction = 'recycle'"
+          >
+            <div class="flex items-center gap-2.5">
+              <div class="size-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <Trash2 class="size-4" />
+              </div>
+              <div class="flex flex-col">
+                <span class="text-xs font-medium text-zinc-200">Chuyển vào Thùng rác Windows</span>
+                <span class="text-[10px] text-zinc-400">An toàn: có thể khôi phục lại bất kỳ lúc nào</span>
+              </div>
+            </div>
+            <Check
+              v-if="freeUpSpaceAction === 'recycle'"
+              class="size-4 text-emerald-400"
+            />
+          </div>
+
+          <div
+            class="flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all"
+            :class="freeUpSpaceAction === 'backup' ? 'bg-blue-500/10 border-blue-500/30 shadow-sm' : 'bg-white/[0.02] border-white/5 hover:border-white/10'"
+            @click="freeUpSpaceAction = 'backup'"
+          >
+            <div class="flex items-center gap-2.5">
+              <div class="size-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                <Archive class="size-4" />
+              </div>
+              <div class="flex flex-col">
+                <span class="text-xs font-medium text-zinc-200">Di chuyển vào thư mục _BackedUp/</span>
+                <span class="text-[10px] text-zinc-400">Tự động gom file vào thư mục lưu trữ</span>
+              </div>
+            </div>
+            <Check
+              v-if="freeUpSpaceAction === 'backup'"
+              class="size-4 text-blue-400"
+            />
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            class="flex-1 h-8 text-xs cursor-pointer"
+            :disabled="isFreeingUpSpace"
+            @click="isFreeUpSpaceOpen = false"
+          >
+            Hủy
+          </Button>
+          <Button
+            size="sm"
+            class="flex-1 h-8 text-xs cursor-pointer font-medium bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20"
+            :disabled="isFreeingUpSpace"
+            @click="handleFreeUpSpace"
+          >
+            {{ isFreeingUpSpace ? 'Đang dọn dẹp...' : 'Bắt đầu giải phóng' }}
+          </Button>
+        </div>
+      </div>
+    </div>
     <Toaster
       position="bottom-center"
       rich-colors

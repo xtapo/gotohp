@@ -65,6 +65,10 @@ export function DismissFailedItem(id: number): $CancellablePromise<void> {
     return $Call.ByID(2854156036, id);
 }
 
+export function FreeUpSpace(filePaths: string[], action: string, backupFolder: string): $CancellablePromise<number> {
+    return $Call.ByID(4282993689, filePaths, action, backupFolder);
+}
+
 export function GetAccounts(): $CancellablePromise<$models.AccountsState> {
     return $Call.ByID(562122970).then(($result: any) => {
         return $$createType0($result);
@@ -201,6 +205,10 @@ export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> 
     return $Call.ByID(203272859, enabled);
 }
 
+export function SetBackupFolder(folder: string): $CancellablePromise<void> {
+    return $Call.ByID(1626753596, folder);
+}
+
 export function SetDeleteFromHost(deleteFromHost: boolean): $CancellablePromise<void> {
     return $Call.ByID(377345147, deleteFromHost);
 }
@@ -211,6 +219,26 @@ export function SetDisableUnsupportedFilesFilter(disableUnsupportedFilesFilter: 
 
 export function SetExcludePattern(pattern: string): $CancellablePromise<void> {
     return $Call.ByID(4021766002, pattern);
+}
+
+export function SetFilterIncludeGif(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1320842506, v);
+}
+
+export function SetFilterIncludeHeic(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4173826047, v);
+}
+
+export function SetFilterIncludePhotos(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(34254665, v);
+}
+
+export function SetFilterIncludeRaw(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1659919426, v);
+}
+
+export function SetFilterIncludeVideos(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3295986060, v);
 }
 
 export function SetFolderAlbumKey(folder: string, albumKey: string): $CancellablePromise<void> {
@@ -225,8 +253,20 @@ export function SetMaxUploadSpeedMBps(speed: number): $CancellablePromise<void> 
     return $Call.ByID(3029183470, speed);
 }
 
+export function SetMaxVideoSizeMB(mb: number): $CancellablePromise<void> {
+    return $Call.ByID(1736941229, mb);
+}
+
+export function SetMinFileSizeKB(kb: number): $CancellablePromise<void> {
+    return $Call.ByID(2505737848, kb);
+}
+
 export function SetPairLivePhotos(pairLivePhotos: boolean): $CancellablePromise<void> {
     return $Call.ByID(3927958009, pairLivePhotos);
+}
+
+export function SetPostUploadAction(action: string): $CancellablePromise<void> {
+    return $Call.ByID(4150034003, action);
 }
 
 export function SetProxy(proxy: string): $CancellablePromise<void> {

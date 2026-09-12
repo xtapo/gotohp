@@ -137,7 +137,16 @@ preferences:
 	}
 	dir := uploadFilterFixture(t)
 	opts, paths := parsedUploadOptions(t, dir)
-	want := backend.UploadOptions{Threads: 3, SkipIncompleteLivePhotos: true}
+	want := backend.UploadOptions{
+		Threads:                  3,
+		SkipIncompleteLivePhotos: true,
+		FilterIncludePhotos:      true,
+		FilterIncludeVideos:      true,
+		FilterIncludeRaw:         true,
+		FilterIncludeHeic:        true,
+		FilterIncludeGif:         true,
+		PostUploadAction:         backend.PostUploadNone,
+	}
 	if !reflect.DeepEqual(opts, want) {
 		t.Fatalf("CLI defaults inherited GUI settings: got %+v, want %+v", opts, want)
 	}
@@ -162,6 +171,8 @@ func TestUploadFlagsPropagateToRunOptions(t *testing.T) {
 		DisableUnsupportedFilesFilter: true, SetDateFromFilename: true, ExcludePattern: "excluded",
 		PairLivePhotos: true, SkipIncompleteLivePhotos: false,
 		UpdateExistingPhotosToLive: true, IgnoreAppleMetadata: true, AlbumName: "Trip",
+		FilterIncludePhotos: true, FilterIncludeVideos: true, FilterIncludeRaw: true,
+		FilterIncludeHeic: true, FilterIncludeGif: true, PostUploadAction: backend.PostUploadDelete,
 	}
 	if !reflect.DeepEqual(opts, want) || !slices.Equal(paths, []string{"photo.jpg"}) {
 		t.Fatalf("parsed upload = %+v, %q; want %+v, [photo.jpg]", opts, paths, want)

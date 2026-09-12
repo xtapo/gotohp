@@ -22,6 +22,19 @@ type UploadOptions struct {
 	// Apple content identifiers. It is never persisted.
 	IgnoreAppleMetadata bool
 
+	// Detailed filters
+	FilterIncludePhotos bool
+	FilterIncludeVideos bool
+	FilterIncludeRaw    bool
+	FilterIncludeHeic   bool
+	FilterIncludeGif    bool
+	MinFileSizeKB       int
+	MaxVideoSizeMB      int
+
+	// Free up space / post-upload actions
+	PostUploadAction string
+	BackupFolder     string
+
 	// AlbumName is a name or album key to add uploads to. Ignored when
 	// AlbumAutoMode is set, which creates one album per source directory.
 	AlbumName     string
@@ -47,6 +60,15 @@ func (c Preferences) UploadOptions() UploadOptions {
 		PairLivePhotos:                c.PairLivePhotos,
 		SkipIncompleteLivePhotos:      c.SkipIncompleteLivePhotos,
 		UpdateExistingPhotosToLive:    c.UpdateExistingPhotosToLive,
+		FilterIncludePhotos:           c.FilterIncludePhotos,
+		FilterIncludeVideos:           c.FilterIncludeVideos,
+		FilterIncludeRaw:              c.FilterIncludeRaw,
+		FilterIncludeHeic:             c.FilterIncludeHeic,
+		FilterIncludeGif:              c.FilterIncludeGif,
+		MinFileSizeKB:                 c.MinFileSizeKB,
+		MaxVideoSizeMB:                c.MaxVideoSizeMB,
+		PostUploadAction:              c.PostUploadAction,
+		BackupFolder:                  c.BackupFolder,
 		AlbumName:                     c.AlbumName,
 		AlbumAutoMode:                 c.AlbumAutoMode,
 	}
@@ -58,6 +80,23 @@ func (o UploadOptions) normalized() UploadOptions {
 	}
 	if o.AlbumAutoMode {
 		o.AlbumName = ""
+	}
+	// Default to including photos and videos if both are unset (e.g. zero-value struct)
+	if !o.FilterIncludePhotos && !o.FilterIncludeVideos {
+		o.FilterIncludePhotos = true
+		o.FilterIncludeVideos = true
+		o.FilterIncludeRaw = true
+		o.FilterIncludeHeic = true
+		o.FilterIncludeGif = true
+	}
+	if o.PostUploadAction == "" {
+		if o.DeleteFromHost {
+			o.PostUploadAction = PostUploadDelete
+		} else {
+			o.PostUploadAction = PostUploadNone
+		}
+	} else if o.PostUploadAction == PostUploadDelete {
+		o.DeleteFromHost = true
 	}
 	return o
 }

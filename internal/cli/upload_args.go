@@ -42,6 +42,15 @@ func newUploadCommand() *cobra.Command {
 	f.Bool("upload-incomplete-live-photos", false, "upload an unmatched Live Photo member as a single file")
 	f.Bool("update-existing-photos-to-live", false, "attach matching MOV files to existing photos")
 	f.Bool("ignore-apple-metadata", false, "match Live Photo pairs by filename stem instead of Apple metadata")
+	f.Bool("photos-only", false, "upload photos only (skip videos)")
+	f.Bool("videos-only", false, "upload videos only (skip photos)")
+	f.Bool("no-raw", false, "exclude camera RAW files (CR2, NEF, ARW, DNG, etc.)")
+	f.Bool("no-heic", false, "exclude Apple HEIC/HEIF files")
+	f.Bool("no-gif", false, "exclude GIF files")
+	f.Int("min-size-kb", 0, "skip files smaller than this size in KB (e.g. 50)")
+	f.Int("max-video-size-mb", 0, "skip video files larger than this size in MB (e.g. 2048)")
+	f.String("post-upload-action", "", "action after successful upload: none, backup, recycle, delete")
+	f.String("backup-folder", "", "destination folder for backup post-upload action (default: _BackedUp)")
 	f.StringP("log-level", "l", "info", "log level: debug, info, warn, error")
 	f.Bool("no-tui", false, "disable the interactive progress UI")
 
@@ -49,6 +58,7 @@ func newUploadCommand() *cobra.Command {
 	f.Bool("skip-incomplete-live-photos", false, "")
 	_ = f.MarkHidden("skip-incomplete-live-photos")
 	cmd.MarkFlagsMutuallyExclusive("skip-incomplete-live-photos", "upload-incomplete-live-photos")
+	cmd.MarkFlagsMutuallyExclusive("photos-only", "videos-only")
 	return cmd
 }
 
@@ -98,6 +108,9 @@ func uploadOptionsFromFlags(f *pflag.FlagSet) backend.UploadOptions {
 	opts.Recursive = getBool("recursive")
 	opts.ForceUpload = getBool("force")
 	opts.DeleteFromHost = getBool("delete")
+	if opts.DeleteFromHost {
+		opts.PostUploadAction = backend.PostUploadDelete
+	}
 	opts.DisableUnsupportedFilesFilter = getBool("disable-filter")
 	opts.SetDateFromFilename = getBool("date-from-filename")
 	opts.PairLivePhotos = getBool("pair-live-photos")
@@ -106,6 +119,35 @@ func uploadOptionsFromFlags(f *pflag.FlagSet) backend.UploadOptions {
 	opts.IgnoreAppleMetadata = getBool("ignore-apple-metadata")
 	opts.Threads, _ = f.GetInt("threads")
 	opts.ExcludePattern, _ = f.GetString("exclude")
+
+	if getBool("photos-only") {
+		opts.FilterIncludePhotos = true
+		opts.FilterIncludeVideos = false
+	} else if getBool("videos-only") {
+		opts.FilterIncludePhotos = false
+		opts.FilterIncludeVideos = true
+	}
+	if getBool("no-raw") {
+		opts.FilterIncludeRaw = false
+	}
+	if getBool("no-heic") {
+		opts.FilterIncludeHeic = false
+	}
+	if getBool("no-gif") {
+		opts.FilterIncludeGif = false
+	}
+	if minSize, _ := f.GetInt("min-size-kb"); minSize > 0 {
+		opts.MinFileSizeKB = minSize
+	}
+	if maxVideo, _ := f.GetInt("max-video-size-mb"); maxVideo > 0 {
+		opts.MaxVideoSizeMB = maxVideo
+	}
+	if action, _ := f.GetString("post-upload-action"); action != "" {
+		opts.PostUploadAction = action
+	}
+	if folder, _ := f.GetString("backup-folder"); folder != "" {
+		opts.BackupFolder = folder
+	}
 
 	album, _ := f.GetString("album")
 	if strings.EqualFold(album, "AUTO") {

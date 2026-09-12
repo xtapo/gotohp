@@ -22,9 +22,17 @@ func TestSessionUploadOptionsCapturePreferences(t *testing.T) {
 	manager.SetAlbumName("Holiday")
 
 	want := UploadOptions{
-		Api:     ApiOptions{Proxy: "http://proxy.example:8080", Saver: true, UseQuota: true},
-		Threads: 7, PairLivePhotos: true, UpdateExistingPhotosToLive: true,
-		AlbumName: "Holiday",
+		Api:                        ApiOptions{Proxy: "http://proxy.example:8080", Saver: true, UseQuota: true},
+		Threads:                    7,
+		PairLivePhotos:             true,
+		UpdateExistingPhotosToLive: true,
+		FilterIncludePhotos:        true,
+		FilterIncludeVideos:        true,
+		FilterIncludeRaw:           true,
+		FilterIncludeHeic:          true,
+		FilterIncludeGif:           true,
+		PostUploadAction:           PostUploadNone,
+		AlbumName:                  "Holiday",
 	}
 	captured := manager.SessionUploadOptions()
 	if !reflect.DeepEqual(captured, want) {

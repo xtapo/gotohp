@@ -49,6 +49,15 @@ type Preferences struct {
 	FolderAlbums                  map[string]string `json:"folderAlbums" koanf:"folder_albums"`
 	SyncOnStartup                 bool              `json:"syncOnStartup" koanf:"sync_on_startup"`
 	StartWithWindows              bool              `json:"startWithWindows" koanf:"start_with_windows"`
+	FilterIncludePhotos           bool              `json:"filterIncludePhotos" koanf:"filter_include_photos"`
+	FilterIncludeVideos           bool              `json:"filterIncludeVideos" koanf:"filter_include_videos"`
+	FilterIncludeRaw              bool              `json:"filterIncludeRaw" koanf:"filter_include_raw"`
+	FilterIncludeHeic             bool              `json:"filterIncludeHeic" koanf:"filter_include_heic"`
+	FilterIncludeGif              bool              `json:"filterIncludeGif" koanf:"filter_include_gif"`
+	MinFileSizeKB                 int               `json:"minFileSizeKB" koanf:"min_file_size_kb"`
+	MaxVideoSizeMB                int               `json:"maxVideoSizeMB" koanf:"max_video_size_mb"`
+	PostUploadAction              string            `json:"postUploadAction" koanf:"post_upload_action"`
+	BackupFolder                  string            `json:"backupFolder" koanf:"backup_folder"`
 	// AlbumName and AlbumAutoMode are per-session choices and are never persisted.
 	AlbumName     string `json:"albumName" koanf:"-"`
 	AlbumAutoMode bool   `json:"albumAutoMode" koanf:"-"`
@@ -84,6 +93,15 @@ type legacyConfig struct {
 	FolderAlbums                  map[string]string `koanf:"folder_albums"`
 	SyncOnStartup                 bool              `koanf:"sync_on_startup"`
 	StartWithWindows              bool              `koanf:"start_with_windows"`
+	FilterIncludePhotos           bool              `koanf:"filter_include_photos"`
+	FilterIncludeVideos           bool              `koanf:"filter_include_videos"`
+	FilterIncludeRaw              bool              `koanf:"filter_include_raw"`
+	FilterIncludeHeic             bool              `koanf:"filter_include_heic"`
+	FilterIncludeGif              bool              `koanf:"filter_include_gif"`
+	MinFileSizeKB                 int               `koanf:"min_file_size_kb"`
+	MaxVideoSizeMB                int               `koanf:"max_video_size_mb"`
+	PostUploadAction              string            `koanf:"post_upload_action"`
+	BackupFolder                  string            `koanf:"backup_folder"`
 }
 
 func (l legacyConfig) toConfig() Config {
@@ -118,6 +136,15 @@ func (l legacyConfig) toConfig() Config {
 			FolderAlbums:                  albums,
 			SyncOnStartup:                 l.SyncOnStartup,
 			StartWithWindows:              l.StartWithWindows,
+			FilterIncludePhotos:           l.FilterIncludePhotos,
+			FilterIncludeVideos:           l.FilterIncludeVideos,
+			FilterIncludeRaw:              l.FilterIncludeRaw,
+			FilterIncludeHeic:             l.FilterIncludeHeic,
+			FilterIncludeGif:              l.FilterIncludeGif,
+			MinFileSizeKB:                 l.MinFileSizeKB,
+			MaxVideoSizeMB:                l.MaxVideoSizeMB,
+			PostUploadAction:              l.PostUploadAction,
+			BackupFolder:                  l.BackupFolder,
 		},
 	}
 }
@@ -141,6 +168,15 @@ var (
 	DefaultPreferences = Preferences{
 		SkipIncompleteLivePhotos: true,
 		UploadThreads:            3,
+		FilterIncludePhotos:      true,
+		FilterIncludeVideos:      true,
+		FilterIncludeRaw:         true,
+		FilterIncludeHeic:        true,
+		FilterIncludeGif:         true,
+		MinFileSizeKB:            0,
+		MaxVideoSizeMB:           0,
+		PostUploadAction:         PostUploadNone,
+		BackupFolder:             "",
 	}
 	DefaultConfig = Config{Preferences: DefaultPreferences}
 )
@@ -221,7 +257,78 @@ func (g *ConfigManager) SetUpdateExistingPhotosToLive(updateExistingPhotosToLive
 func (g *ConfigManager) SetDeleteFromHost(deleteFromHost bool) {
 	updateAppConfig(func(config *Config) {
 		config.Preferences.DeleteFromHost = deleteFromHost
+		if deleteFromHost {
+			config.Preferences.PostUploadAction = PostUploadDelete
+		} else if config.Preferences.PostUploadAction == PostUploadDelete {
+			config.Preferences.PostUploadAction = PostUploadNone
+		}
 	})
+}
+
+func (g *ConfigManager) SetFilterIncludePhotos(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.FilterIncludePhotos = v
+	})
+}
+
+func (g *ConfigManager) SetFilterIncludeVideos(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.FilterIncludeVideos = v
+	})
+}
+
+func (g *ConfigManager) SetFilterIncludeRaw(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.FilterIncludeRaw = v
+	})
+}
+
+func (g *ConfigManager) SetFilterIncludeHeic(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.FilterIncludeHeic = v
+	})
+}
+
+func (g *ConfigManager) SetFilterIncludeGif(v bool) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.FilterIncludeGif = v
+	})
+}
+
+func (g *ConfigManager) SetMinFileSizeKB(kb int) {
+	if kb < 0 {
+		kb = 0
+	}
+	updateAppConfig(func(config *Config) {
+		config.Preferences.MinFileSizeKB = kb
+	})
+}
+
+func (g *ConfigManager) SetMaxVideoSizeMB(mb int) {
+	if mb < 0 {
+		mb = 0
+	}
+	updateAppConfig(func(config *Config) {
+		config.Preferences.MaxVideoSizeMB = mb
+	})
+}
+
+func (g *ConfigManager) SetPostUploadAction(action string) {
+	action = strings.ToLower(strings.TrimSpace(action))
+	updateAppConfig(func(config *Config) {
+		config.Preferences.PostUploadAction = action
+		config.Preferences.DeleteFromHost = (action == PostUploadDelete)
+	})
+}
+
+func (g *ConfigManager) SetBackupFolder(folder string) {
+	updateAppConfig(func(config *Config) {
+		config.Preferences.BackupFolder = strings.TrimSpace(folder)
+	})
+}
+
+func (g *ConfigManager) FreeUpSpace(filePaths []string, action string, backupFolder string) (int, error) {
+	return FreeUpSpaceFiles(filePaths, action, backupFolder)
 }
 
 func (g *ConfigManager) SetDisableUnsupportedFilesFilter(disableUnsupportedFilesFilter bool) {
@@ -1023,6 +1130,22 @@ func loadAppConfig() Config {
 
 	if !k.Exists("preferences.skip_incomplete_live_photos") {
 		c.Preferences.SkipIncompleteLivePhotos = DefaultPreferences.SkipIncompleteLivePhotos
+	}
+
+	if !k.Exists("preferences.filter_include_photos") {
+		c.Preferences.FilterIncludePhotos = DefaultPreferences.FilterIncludePhotos
+	}
+	if !k.Exists("preferences.filter_include_videos") {
+		c.Preferences.FilterIncludeVideos = DefaultPreferences.FilterIncludeVideos
+	}
+	if !k.Exists("preferences.filter_include_raw") {
+		c.Preferences.FilterIncludeRaw = DefaultPreferences.FilterIncludeRaw
+	}
+	if !k.Exists("preferences.filter_include_heic") {
+		c.Preferences.FilterIncludeHeic = DefaultPreferences.FilterIncludeHeic
+	}
+	if !k.Exists("preferences.filter_include_gif") {
+		c.Preferences.FilterIncludeGif = DefaultPreferences.FilterIncludeGif
 	}
 
 	if c.Preferences.UploadThreads < 1 {
