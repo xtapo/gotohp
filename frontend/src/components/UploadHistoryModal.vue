@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Clock,
   FileWarning,
+  ExternalLink,
 } from '@lucide/vue'
 import {
   ConfigManager,
@@ -28,7 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Events, Clipboard } from '@wailsio/runtime'
+import { Events, Clipboard, Browser } from '@wailsio/runtime'
 
 const isOpen = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{
@@ -52,6 +53,32 @@ const loadingSessionId = ref<number | null>(null)
 
 // Copy feedback tracking
 const copiedPath = ref<string | null>(null)
+const copiedMediaKey = ref<string | null>(null)
+
+async function openPhotoLink(mediaKey: string) {
+  if (!mediaKey) return
+  await Browser.OpenURL(`https://photos.google.com/photo/${mediaKey}`)
+}
+
+async function copyPhotoLink(mediaKey: string) {
+  if (!mediaKey) return
+  await Clipboard.SetText(`https://photos.google.com/photo/${mediaKey}`)
+  copiedMediaKey.value = mediaKey
+  toast.success('Đã sao chép liên kết ảnh!')
+  setTimeout(() => {
+    if (copiedMediaKey.value === mediaKey) {
+      copiedMediaKey.value = null
+    }
+  }, 1500)
+}
+
+async function openAlbumLink(albumNameOrKey: string) {
+  if (!albumNameOrKey) return
+  const url = albumNameOrKey.startsWith('AF1Qip')
+    ? `https://photos.google.com/album/${albumNameOrKey}`
+    : 'https://photos.google.com/albums'
+  await Browser.OpenURL(url)
+}
 
 function formatBytes(bytes: number, decimals = 1): string {
   if (!bytes || bytes <= 0) return '0 B'
@@ -548,10 +575,13 @@ defineExpose({
                   </span>
                   <span
                     v-if="session.albumName"
-                    class="flex items-center gap-1 text-primary truncate"
+                    class="flex items-center gap-1 text-primary truncate hover:underline cursor-pointer"
+                    title="Mở album trên Google Photos"
+                    @click.stop="openAlbumLink(session.albumName)"
                   >
                     <FolderPlus class="size-3" />
                     {{ session.albumName }}
+                    <ExternalLink class="size-2.5 opacity-70 ml-0.5" />
                   </span>
                 </div>
               </div>
@@ -652,6 +682,34 @@ defineExpose({
                       @click="retrySingleFile(subItem.filePath)"
                     >
                       Thử lại
+                    </Button>
+                  </div>
+
+                  <div
+                    v-else-if="subItem.status === 'success' && subItem.mediaKey"
+                    class="flex items-center gap-0.5 shrink-0"
+                  >
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-6 w-6 p-0 text-muted-foreground hover:text-primary cursor-pointer"
+                      title="Mở ảnh trên Google Photos"
+                      @click.stop="openPhotoLink(subItem.mediaKey)"
+                    >
+                      <ExternalLink class="size-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-6 w-6 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="Sao chép link ảnh"
+                      @click.stop="copyPhotoLink(subItem.mediaKey)"
+                    >
+                      <component
+                        :is="copiedMediaKey === subItem.mediaKey ? Check : Copy"
+                        class="size-3"
+                        :class="copiedMediaKey === subItem.mediaKey ? 'text-emerald-500' : ''"
+                      />
                     </Button>
                   </div>
                 </div>

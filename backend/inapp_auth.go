@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,9 @@ var (
 	inAppAuthMu      sync.Mutex
 	activeLoginWin   *application.WebviewWindow
 	activeCancelFn   context.CancelFunc
+
+	inAppPhotosMu   sync.Mutex
+	activePhotosWin *application.WebviewWindow
 )
 
 // SetApp saves the Wails application reference for window management.
@@ -144,5 +148,58 @@ func (g *ConfigManager) CancelInAppGoogleLogin() error {
 		activeLoginWin.Close()
 		activeLoginWin = nil
 	}
+	return nil
+}
+
+// OpenInAppGooglePhotos opens a Google Photos URL inside a dedicated in-app WebView window.
+func (g *ConfigManager) OpenInAppGooglePhotos(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		rawURL = "https://photos.google.com/"
+	}
+
+	app := wailsAppInstance
+	if app == nil {
+		return errors.New("application instance is not initialized")
+	}
+
+	inAppPhotosMu.Lock()
+	defer inAppPhotosMu.Unlock()
+
+	if activePhotosWin != nil {
+		application.InvokeSync(func() {
+			activePhotosWin.SetURL(rawURL)
+			activePhotosWin.Show()
+			activePhotosWin.Restore()
+			activePhotosWin.Focus()
+		})
+		return nil
+	}
+
+	photosWin := application.InvokeSyncWithResult(func() *application.WebviewWindow {
+		w := app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:               "Google Photos",
+			Width:               1060,
+			Height:              720,
+			URL:                 rawURL,
+			DisableResize:       false,
+			MaximiseButtonState: application.ButtonEnabled,
+			BackgroundType:      application.BackgroundTypeSolid,
+		})
+		w.Center()
+		w.Show()
+		w.Focus()
+		return w
+	})
+
+	activePhotosWin = photosWin
+	photosWin.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) {
+		inAppPhotosMu.Lock()
+		if activePhotosWin == photosWin {
+			activePhotosWin = nil
+		}
+		inAppPhotosMu.Unlock()
+	})
+
 	return nil
 }

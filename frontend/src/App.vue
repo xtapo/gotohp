@@ -8,7 +8,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { useColorMode } from '@vueuse/core'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import {
   UserPlus,
   History,
@@ -21,9 +21,12 @@ import {
   FolderPlus,
   Sparkles,
   CheckCircle2,
+  ExternalLink,
+  Copy,
+  Check,
 } from '@lucide/vue'
 import { ConfigManager, type AutoSyncStatus } from '../bindings/app/backend'
-import { Events } from '@wailsio/runtime'
+import { Events, Browser, Clipboard } from '@wailsio/runtime'
 import Button from "./components/ui/button/Button.vue"
 import GoogleAccountSelect from './components/GoogleAccountSelect.vue'
 import GoogleAuthSetup from "./components/GoogleAuthSetup.vue"
@@ -221,6 +224,60 @@ const handleCopyClick = () => {
   copyButtonText.value = 'Đã sao chép!';
   setTimeout(() => copyButtonText.value = 'Sao chép JSON', 1200);
 };
+
+const isCopiedLink = ref(false)
+
+const hasCreatedAlbum = computed(() => {
+  return Boolean(uploadState.albumStatus?.AlbumKeys && uploadState.albumStatus.AlbumKeys.length > 0)
+})
+
+const copyLinkButtonText = computed(() => {
+  if (isCopiedLink.value) return 'Đã sao chép!'
+  if (hasCreatedAlbum.value) return 'Sao chép link Album'
+  if (uploadState.results.success.length === 1) return 'Sao chép link'
+  return `Sao chép ${uploadState.results.success.length} link`
+})
+
+const openInGooglePhotos = async () => {
+  let targetUrl = 'https://photos.google.com/'
+  const authUserParam = selectedOption.value ? `?authuser=${encodeURIComponent(selectedOption.value)}` : ''
+
+  if (hasCreatedAlbum.value && uploadState.albumStatus?.AlbumKeys?.[0]) {
+    targetUrl = uploadManager.getAlbumUrl(uploadState.albumStatus.AlbumKeys[0]) + authUserParam
+  } else if (uploadState.results.success.length > 0) {
+    const latestPhoto = uploadState.results.success[uploadState.results.success.length - 1]
+    if (latestPhoto?.mediaKey) {
+      targetUrl = uploadManager.getPhotoUrl(latestPhoto.mediaKey) + authUserParam
+    }
+  } else if (selectedOption.value) {
+    targetUrl = `https://photos.google.com/${authUserParam}`
+  }
+
+  await Browser.OpenURL(targetUrl)
+}
+
+const handleCopyShareLink = async () => {
+  if (hasCreatedAlbum.value && uploadState.albumStatus?.AlbumKeys?.[0]) {
+    await uploadManager.copyAlbumLink(uploadState.albumStatus.AlbumKeys[0])
+    toast.success('Đã sao chép liên kết album!', {
+      description: 'Dán vào trình duyệt hoặc gửi cho người khác.'
+    })
+  } else if (uploadState.results.success.length === 1) {
+    const mediaKey = uploadState.results.success[0].mediaKey
+    if (mediaKey) {
+      await Clipboard.SetText(uploadManager.getPhotoUrl(mediaKey))
+      toast.success('Đã sao chép liên kết ảnh!')
+    }
+  } else if (uploadState.results.success.length > 1) {
+    const mediaKeys = uploadState.results.success.map(s => s.mediaKey).filter(Boolean)
+    await uploadManager.copyPhotoLinks(mediaKeys)
+    toast.success(`Đã sao chép ${mediaKeys.length} liên kết ảnh!`)
+  }
+  isCopiedLink.value = true
+  setTimeout(() => {
+    isCopiedLink.value = false
+  }, 1500)
+}
 
 // Global drag event handlers to detect file dragging
 let dragLeaveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -681,6 +738,50 @@ onUnmounted(() => {
                     {{ item.error }}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions: Open in Google Photos & Copy Link -->
+            <div
+              v-if="uploadState.results.success.length > 0"
+              class="w-full flex flex-col gap-2 pt-2 border-t border-white/5"
+            >
+              <div class="flex items-center gap-2 w-full">
+                <!-- Primary Action: Open in Browser -->
+                <Button
+                  size="sm"
+                  class="flex-1 cursor-pointer select-none bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs h-8 rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  @click="openInGooglePhotos"
+                >
+                  <ExternalLink class="size-3.5" />
+                  <span>{{ hasCreatedAlbum ? 'Mở Album trên Web' : 'Mở trên Google Photos' }}</span>
+                </Button>
+
+                <!-- Copy Link Button -->
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="cursor-pointer select-none text-xs h-8 px-3 rounded-lg border-white/10 hover:bg-white/5 flex items-center gap-1.5 shrink-0"
+                  @click="handleCopyShareLink"
+                >
+                  <component
+                    :is="isCopiedLink ? Check : Copy"
+                    class="size-3.5"
+                    :class="isCopiedLink ? 'text-emerald-400' : 'text-zinc-300'"
+                  />
+                  <span>{{ copyLinkButtonText }}</span>
+                </Button>
+              </div>
+
+              <!-- Sharing Tip -->
+              <div class="flex items-start gap-1.5 text-[10.5px] text-zinc-400 bg-white/[0.02] p-2 rounded-lg border border-white/5 leading-relaxed">
+                <Sparkles class="size-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  {{ hasCreatedAlbum
+                    ? 'Mở album trên trình duyệt rồi bấm biểu tượng Chia sẻ ➔ Tạo liên kết để lấy link công khai.'
+                    : 'Mở ảnh trên trình duyệt rồi bấm biểu tượng Chia sẻ ➔ Tạo liên kết để lấy link công khai.'
+                  }}
+                </span>
               </div>
             </div>
 

@@ -154,6 +154,7 @@ class UploadManager {
       this.totalBytesAdjustment = 0;
       this.resetUploadResults();
       this.state.warnings = [];
+      this.state.albumStatus = null;
     });
 
     // Handle async total bytes update (calculated after uploadStart)
@@ -333,6 +334,35 @@ class UploadManager {
 
   public cancelUpload() {
     Events.Emit("uploadCancel");
+  }
+
+  public getPhotoUrl(mediaKey: string): string {
+    return `https://photos.google.com/photo/${mediaKey}`;
+  }
+
+  public getAlbumUrl(albumKey: string): string {
+    return `https://photos.google.com/album/${albumKey}`;
+  }
+
+  public async copyPhotoLinks(mediaKeys: string[]): Promise<boolean> {
+    const urls = mediaKeys.map((k) => this.getPhotoUrl(k)).join("\n");
+    try {
+      await Clipboard.SetText(urls);
+      return true;
+    } catch (error) {
+      console.error("Failed to copy photo links:", error);
+      return false;
+    }
+  }
+
+  public async copyAlbumLink(albumKey: string): Promise<boolean> {
+    try {
+      await Clipboard.SetText(this.getAlbumUrl(albumKey));
+      return true;
+    } catch (error) {
+      console.error("Failed to copy album link:", error);
+      return false;
+    }
   }
 
   public async copyResultsAsJson() {

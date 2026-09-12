@@ -163,6 +163,13 @@ export function OpenDirectoryDialog(): $CancellablePromise<string> {
     return $Call.ByID(2438934449);
 }
 
+/**
+ * OpenInAppGooglePhotos opens a Google Photos URL inside a dedicated in-app WebView window.
+ */
+export function OpenInAppGooglePhotos(rawURL: string): $CancellablePromise<void> {
+    return $Call.ByID(4202882374, rawURL);
+}
+
 export function RemoveCredentials(email: string): $CancellablePromise<void> {
     return $Call.ByID(4243930372, email);
 }
